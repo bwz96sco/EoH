@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eoh"
+version = "0.1"
+description = "Evolutionary Computation + Large Language Model for automatic algorithm design"
+authors = [{name = "MetaAI Group, CityU"}]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "numba",
+    "joblib",
+    "requests>=2.32.5",
+]
+
+[tool.setuptools]
+package-dir = {"" = "eoh/src"}
+
+[tool.setuptools.packages.find]
+where = ["eoh/src"]
