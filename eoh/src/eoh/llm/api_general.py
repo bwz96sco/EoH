@@ -42,9 +42,11 @@ class InterfaceAPI:
                 json_data = json.loads(data)
                 response = json_data["choices"][0]["message"]["content"]
                 break
-            except:
+            except Exception as e:
                 if self.debug_mode:
-                    print("Error in API. Restarting the process...")
+                    print(f"Error in API (attempt {n_trial}/{self.n_trial}): {e}")
+                else:
+                    print(f"API error: {type(e).__name__}: {e}")
                 continue
             
 
