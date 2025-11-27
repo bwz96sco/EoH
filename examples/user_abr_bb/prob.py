@@ -180,7 +180,8 @@ class ABRBuffer:
         total_reward = np.sum(rewards)
         if not np.isfinite(total_reward):
             return None
-        return float(total_reward)
+        # Return negative reward because EoH uses minimization (lower is better)
+        return float(-total_reward)
 
     def evaluate(self, code_string):
         try:
