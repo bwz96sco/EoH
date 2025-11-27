@@ -7,3 +7,4 @@
 .vscode/
 output.log
 results/
+test_results/*
