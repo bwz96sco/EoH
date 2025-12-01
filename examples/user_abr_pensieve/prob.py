@@ -7,7 +7,6 @@ This module evaluates LLM-generated code that defines:
 """
 
 import importlib.util
-import os
 import sys
 import types
 import warnings
@@ -24,7 +23,8 @@ from prompts import GetPrompts
 
 
 # Training hyperparameters
-MAX_EPOCHS = 110000
+#MAX_EPOCHS = 110000
+MAX_EPOCHS = 10000
 TRAIN_SEQ_LEN = 100
 ACTOR_LR_RATE = 0.0001
 CRITIC_LR_RATE = 0.001
@@ -451,11 +451,23 @@ class ABRPensieve:
                 heuristic_module = types.ModuleType("heuristic_module")
                 
                 # Add necessary imports to module namespace
+                heuristic_module.__dict__['__builtins__'] = __builtins__
                 heuristic_module.__dict__['np'] = np
                 heuristic_module.__dict__['numpy'] = np
                 heuristic_module.__dict__['torch'] = torch
                 heuristic_module.__dict__['nn'] = nn
                 heuristic_module.__dict__['F'] = F
+                heuristic_module.__dict__['optim'] = optim
+                
+                # Prepend imports if not present in code
+                import_block = (
+                    "import numpy as np\n"
+                    "import torch\n"
+                    "import torch.nn as nn\n"
+                    "import torch.nn.functional as F\n"
+                )
+                if "import numpy" not in code_string and "import np" not in code_string:
+                    code_string = import_block + code_string
                 
                 # Execute code
                 exec(code_string, heuristic_module.__dict__)
