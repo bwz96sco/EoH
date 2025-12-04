@@ -491,8 +491,15 @@ class ABRPensieve:
                 test_state = test_env.reset()
                 state_dim = test_state.shape
                 
-                # Build network
-                network = build_network_fn(state_dim, A_DIM)
+                # Build network with better error handling
+                try:
+                    network = build_network_fn(state_dim, A_DIM)
+                except NameError as e:
+                    # Common error: LLM uses 'state' instead of 'state_dim' or 'x'
+                    print(f"NameError in build_network: {e}")
+                    print(f"Error Code: {code_string}")
+                    return None
+                    
                 if not isinstance(network, nn.Module):
                     print("Error: build_network must return nn.Module")
                     return None

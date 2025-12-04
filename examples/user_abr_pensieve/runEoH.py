@@ -36,8 +36,8 @@ paras.set_paras(
     llm_api_endpoint="aihubmix.com", # Set your LLM endpoint
     llm_api_key="sk-mESrY9qAd0QiCBPTA4607c1a4f794bF69085948f6cD09a01",      # Set your API key
     llm_model="o3-mini",             # LLM model to use
-    ec_pop_size=4,                   # Small population (each eval takes hours)
-    ec_n_pop=4,                      # Few generations
+    ec_pop_size=1,                   # Small population (each eval takes hours)
+    ec_n_pop=1,                      # Few generations
     exp_n_proc=1,                    # Single process (training is resource-intensive)
     exp_debug_mode=False,
     eva_numba_decorator=False,       # No numba (PyTorch code)
