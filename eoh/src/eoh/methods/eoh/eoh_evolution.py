@@ -80,18 +80,41 @@ The description must be inside a brace. Thirdly, implement it in Python as a fun
         return prompt_content
     
     def get_prompt_m1(self,indiv1):
-        prompt_content = self.prompt_task+"\n"\
-"I have one algorithm with its code as follows. \
-Algorithm description: "+indiv1['algorithm']+"\n\
-Code:\n\
-"+indiv1['code']+"\n\
-Please assist me in creating a new algorithm that has a different form but can be a modified version of the algorithm provided. \n"\
-"First, describe your new algorithm and main steps in one sentence. \
-The description must be inside a brace. Next, implement it in Python as a function named \
-"+self.prompt_func_name +". This function should accept "+str(len(self.prompt_func_inputs))+" input(s): "\
-+self.joined_inputs+". The function should return "+str(len(self.prompt_func_outputs))+" output(s): "\
-+self.joined_outputs+". "+self.prompt_inout_inf+" "\
-+self.prompt_other_inf+"\n"+"Do not give additional explanations."
+        feedback = ""
+        other_inf = indiv1.get("other_inf")
+        if isinstance(other_inf, str) and other_inf.strip():
+            feedback = "\nEvaluation feedback (for guidance):\n" + other_inf.strip() + "\n"
+
+        prompt_content = (
+            self.prompt_task
+            + "\n"
+            + "I have one algorithm with its code as follows. "
+            + "Algorithm description: "
+            + indiv1["algorithm"]
+            + "\n"
+            + "Code:\n"
+            + indiv1["code"]
+            + "\n"
+            + feedback
+            + "Please assist me in creating a new algorithm that has a different form but can be a modified version of the algorithm provided. \n"
+            + "First, describe your new algorithm and main steps in one sentence. "
+            + "The description must be inside a brace. Next, implement it in Python as a function named "
+            + self.prompt_func_name
+            + ". This function should accept "
+            + str(len(self.prompt_func_inputs))
+            + " input(s): "
+            + self.joined_inputs
+            + ". The function should return "
+            + str(len(self.prompt_func_outputs))
+            + " output(s): "
+            + self.joined_outputs
+            + ". "
+            + self.prompt_inout_inf
+            + " "
+            + self.prompt_other_inf
+            + "\n"
+            + "Do not give additional explanations."
+        )
         return prompt_content
     
     def get_prompt_m2(self,indiv1):

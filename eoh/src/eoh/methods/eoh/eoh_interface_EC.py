@@ -75,8 +75,18 @@ class InterfaceEC():
     def population_generation_seed(self,seeds,n_p):
 
         population = []
-
-        fitness = Parallel(n_jobs=n_p)(delayed(self.interface_eval.evaluate)(seed['code']) for seed in seeds)
+        if hasattr(self.interface_eval, "evaluate_with_details"):
+            results = Parallel(n_jobs=n_p)(
+                delayed(self.interface_eval.evaluate_with_details)(seed["code"])
+                for seed in seeds
+            )
+            fitness = [r[0] for r in results]
+            other_infs = [r[1] for r in results]
+        else:
+            fitness = Parallel(n_jobs=n_p)(
+                delayed(self.interface_eval.evaluate)(seed["code"]) for seed in seeds
+            )
+            other_infs = [None for _ in seeds]
 
         for i in range(len(seeds)):
             try:
@@ -87,8 +97,9 @@ class InterfaceEC():
                     'other_inf': None
                 }
 
-                obj = np.array(fitness[i])
-                seed_alg['objective'] = np.round(obj, 5)
+                obj = float(fitness[i])
+                seed_alg['objective'] = float(np.round(obj, 5))
+                seed_alg['other_inf'] = other_infs[i]
                 population.append(seed_alg)
 
             except Exception as e:
@@ -177,9 +188,15 @@ class InterfaceEC():
                 
             #self.code2file(offspring['code'])
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(self.interface_eval.evaluate, code)
-                fitness = future.result(timeout=self.timeout)
-                offspring['objective'] = np.round(fitness, 5)
+                if hasattr(self.interface_eval, "evaluate_with_details"):
+                    future = executor.submit(self.interface_eval.evaluate_with_details, code)
+                    fitness, other_inf = future.result(timeout=self.timeout)
+                else:
+                    future = executor.submit(self.interface_eval.evaluate, code)
+                    fitness = future.result(timeout=self.timeout)
+                    other_inf = None
+                offspring['objective'] = float(np.round(float(fitness), 5))
+                offspring['other_inf'] = other_inf
                 future.cancel()        
                 # fitness = self.interface_eval.evaluate(code)
                 
