@@ -1,12 +1,12 @@
 # Backend Development Guidelines
 
-> Best practices for backend development in this project.
+> Best practices for backend development in the EoH project.
 
 ---
 
 ## Overview
 
-This directory contains guidelines for backend development. Fill in each file with your project's specific conventions.
+EoH (Evolution of Heuristics) is a Python framework that combines Evolutionary Computation with LLMs for automatic algorithm design. The core package lives at `eoh/src/eoh/`. These guidelines document the actual conventions observed in the codebase.
 
 ---
 
@@ -14,25 +14,24 @@ This directory contains guidelines for backend development. Fill in each file wi
 
 | Guide | Description | Status |
 |-------|-------------|--------|
-| [Directory Structure](./directory-structure.md) | Module organization and file layout | To fill |
-| [Database Guidelines](./database-guidelines.md) | ORM patterns, queries, migrations | To fill |
-| [Error Handling](./error-handling.md) | Error types, handling strategies | To fill |
-| [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
-| [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
+| [Directory Structure](./directory-structure.md) | Package layout, module organization, how to add components | Filled |
+| [Data Persistence](./database-guidelines.md) | File-based storage (JSON/pickle), output structure, checkpointing | Filled |
+| [Error Handling](./error-handling.md) | Layered error suppression, None as error signal, retry patterns | Filled |
+| [Quality Guidelines](./quality-guidelines.md) | Code style, architecture patterns, forbidden patterns, review checklist | Filled |
+| [Logging Guidelines](./logging-guidelines.md) | print()-based output, debug mode, file output formats | Filled |
 
 ---
 
-## How to Fill These Guidelines
+## Quick Reference
 
-For each guideline file:
-
-1. Document your project's **actual conventions** (not ideals)
-2. Include **code examples** from your codebase
-3. List **forbidden patterns** and why
-4. Add **common mistakes** your team has made
-
-The goal is to help AI assistants and new team members understand how YOUR project works.
+- **Python**: >= 3.10, managed with `uv`
+- **No database**: File-based JSON storage only
+- **No logging module**: `print()` exclusively
+- **No test framework**: Manual testing only
+- **Error signal**: `None` (not exceptions)
+- **Config**: `Paras` class with `set_paras(**kwargs)`
+- **Parallelism**: joblib + concurrent.futures
 
 ---
 
-**Language**: All documentation should be written in **English**.
+**Language**: All documentation is written in **English**.
