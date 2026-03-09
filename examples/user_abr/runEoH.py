@@ -47,7 +47,7 @@ def main() -> None:
         ec_n_pop=int(os.environ.get("EC_N_POP", "10")),
         ec_operators=["e1", "e2", "m1", "m2", "m3"],
         exp_n_proc=int(os.environ.get("EXP_N_PROC", "4")),
-        exp_debug_mode=False,
+        exp_debug_mode=True,
         exp_use_seed=True,
         exp_seed_path=str(seed_path),
         exp_output_path=str(repo_root),

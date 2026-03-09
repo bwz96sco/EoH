@@ -4,6 +4,7 @@
 *.egg
 *.pyc
 .DS_Store
+.env
 .vscode/
 output.log
 results/
