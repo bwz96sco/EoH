@@ -64,9 +64,10 @@ The AI will read your code and help you document it.
 
 ## Completion Checklist
 
-- [ ] Guidelines filled for your project type
-- [ ] At least 2-3 real code examples in each guideline
-- [ ] Anti-patterns documented
+- [x] Guidelines filled for the backend project type
+- [x] At least 2-3 real code examples in each backend guideline
+- [x] Anti-patterns documented
+- [x] Frontend spec index marked not applicable because no frontend code exists in this repository
 
 When done:
 

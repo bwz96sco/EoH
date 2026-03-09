@@ -20,11 +20,16 @@ class ABRProblem:
     HISTORY_WINDOW = 8
     EPS = 1e-6
 
-    def __init__(self, max_traces: int | None = None) -> None:
+    def __init__(
+        self,
+        max_traces: int | None = None,
+        trace_split: str = "train",
+    ) -> None:
         self.prompts = GetPrompts()
         self.random_seed = 42
         self.sabr_root = Path(__file__).resolve().parents[2] / "env" / "SABR"
         self.max_traces = max_traces
+        self.trace_split = trace_split
 
         sabr_config, sabr_env, sabr_load_trace = self._import_sabr_modules()
 
@@ -38,8 +43,15 @@ class ABRProblem:
         self.buffer_max_s = float(sabr_env.BUFFER_THRESH) / 1000.0
         self.total_chunks = int(getattr(sabr_env, "TOTAL_VIDEO_CHUNCK", 48))
 
+        if trace_split == "train":
+            trace_path = getattr(sabr_config, "TRAIN_TRACES", None)
+            if trace_path is None:
+                trace_path = sabr_config.TEST_TRACES
+        else:
+            trace_path = sabr_config.TEST_TRACES
+
         all_cooked_time, all_cooked_bw, all_file_names = sabr_load_trace.load_trace(
-            sabr_config.TEST_TRACES
+            trace_path
         )
         if self.max_traces is not None:
             n = int(max(1, min(self.max_traces, len(all_file_names))))

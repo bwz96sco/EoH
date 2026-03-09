@@ -19,11 +19,13 @@ EoH/
 ├── eoh/                    # Core package
 │   ├── setup.py            # Legacy setup.py (duplicates pyproject.toml)
 │   └── src/eoh/            # Installable package source
-├── examples/               # Ready-to-run example problems (9 folders)
+├── examples/               # Ready-to-run example problems
 ├── baseline/               # Baseline implementations (FunSearch)
 ├── scripts/                # Standalone utility scripts
 ├── docs/                   # Documentation and experiment results
 ├── env/                    # External environment files (e.g., SABR)
+├── results/                # Generated evolution outputs (JSON snapshots)
+├── test_results/           # Generated evaluation outputs
 └── build/                  # Stale build artifacts (can be ignored)
 ```
 
@@ -122,7 +124,6 @@ examples/user_tsp_gls/                 # TSP with Guided Local Search
 examples/user_fssp_gls/                # Flow Shop Scheduling with GLS
 examples/user_bo_caf/                  # Bayesian Optimization CAF
 examples/user_abr/                     # Adaptive Bitrate Streaming
-examples/user_abr_pensieve/            # ABR with Pensieve RL
 ```
 
 ### User-Defined Problem Folder Pattern

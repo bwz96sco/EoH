@@ -4,6 +4,10 @@ import json
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent / ".env")
+
 from eoh import eoh
 from eoh.utils.getParas import Paras
 
@@ -20,7 +24,7 @@ def _env_flag(name: str, default: bool = False) -> bool:
 def main() -> None:
     repo_root = Path(__file__).resolve().parents[2]
 
-    problem = ABRProblem()
+    problem = ABRProblem(trace_split="train")
     paras = Paras()
 
     # Seed population via the built-in `exp_use_seed` mechanism.

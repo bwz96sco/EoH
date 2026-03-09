@@ -1,0 +1,32 @@
+{
+  "id": "00-bootstrap-guidelines",
+  "name": "Bootstrap Guidelines",
+  "description": "Fill in project development guidelines for AI agents",
+  "status": "completed",
+  "dev_type": "docs",
+  "priority": "P1",
+  "creator": "ZhangBowen",
+  "assignee": "ZhangBowen",
+  "createdAt": "2026-02-19",
+  "completedAt": "2026-03-09",
+  "commit": null,
+  "subtasks": [
+    {
+      "name": "Fill backend guidelines",
+      "status": "completed"
+    },
+    {
+      "name": "Add code examples",
+      "status": "completed"
+    },
+    {
+      "name": "Mark frontend spec placeholders as not applicable",
+      "status": "completed"
+    }
+  ],
+  "relatedFiles": [
+    ".trellis/spec/backend/",
+    ".trellis/spec/frontend/index.md"
+  ],
+  "notes": "First-time setup task created by trellis init (backend project). Backend specs were verified against the codebase, and frontend placeholders were marked not applicable."
+}
