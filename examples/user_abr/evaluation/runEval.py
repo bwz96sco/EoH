@@ -2,13 +2,18 @@
 
 Usage:
     1. Copy your evolved heuristic into evaluation/heuristic.py
-    2. Run: uv run python examples/user_abr/evaluation/runEval.py
+    2. Set DATASET in .env (or leave default from SABR config)
+    3. Run: uv run python examples/user_abr/evaluation/runEval.py
 """
 from __future__ import annotations
 
-import importlib
+import os
 import sys
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 # Ensure the parent directory is importable.
 _PARENT = str(Path(__file__).resolve().parent.parent)
@@ -19,18 +24,17 @@ from prob import ABRProblem
 
 
 def main() -> None:
-    problem = ABRProblem(trace_split="test")
+    dataset = os.environ.get("DATASET")
+    problem = ABRProblem(trace_split="test", dataset=dataset)
 
-    heuristic_module = importlib.import_module("heuristic")
-    heuristic = importlib.reload(heuristic_module)
-
-    code = open(Path(__file__).resolve().parent / "heuristic.py").read()
+    code = (Path(__file__).resolve().parent / "heuristic.py").read_text()
     fitness, feedback = problem.evaluate_with_details(code)
 
     if fitness is None:
         print("Evaluation FAILED — heuristic returned invalid results.")
         return
 
+    print(f"Dataset:           {dataset or '(SABR config default)'}")
     print(f"Fitness (neg QoE): {fitness:.5f}")
     print(f"QoE:               {-fitness:.5f}")
     print()

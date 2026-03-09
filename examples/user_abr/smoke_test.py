@@ -52,7 +52,7 @@ def unit_test_seed_functions() -> None:
 
 
 def integration_test_seed_population(max_traces: int = 3) -> None:
-    problem = ABRProblem(max_traces=max_traces, trace_split="test")
+    problem = ABRProblem(max_traces=max_traces, trace_split="test", dataset="FCC-18")
     seeds = problem.prompts.get_seed_heuristics()
 
     for seed in seeds:

@@ -24,7 +24,10 @@ def _env_flag(name: str, default: bool = False) -> bool:
 def main() -> None:
     repo_root = Path(__file__).resolve().parents[2]
 
-    problem = ABRProblem(trace_split="train")
+    problem = ABRProblem(
+        trace_split="train",
+        dataset=os.environ.get("DATASET"),
+    )
     paras = Paras()
 
     # Seed population via the built-in `exp_use_seed` mechanism.

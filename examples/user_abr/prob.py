@@ -20,10 +20,17 @@ class ABRProblem:
     HISTORY_WINDOW = 8
     EPS = 1e-6
 
+    VALID_DATASETS = (
+        "FCC-16", "FCC-18", "Oboe", "Puffer-21", "Puffer-22", "HSR",
+        "Norway3G", "Lumos4G", "Lumos5G", "SolisWi-Fi", "Ghent", "Lab",
+        "ABRBench-3G", "ABRBench-4G+",
+    )
+
     def __init__(
         self,
         max_traces: int | None = None,
         trace_split: str = "train",
+        dataset: str | None = None,
     ) -> None:
         self.prompts = GetPrompts()
         self.random_seed = 42
@@ -32,6 +39,21 @@ class ABRProblem:
         self.trace_split = trace_split
 
         sabr_config, sabr_env, sabr_load_trace = self._import_sabr_modules()
+
+        # Override dataset if requested (avoids editing SABR config.py manually).
+        if dataset is not None:
+            if dataset not in self.VALID_DATASETS:
+                raise ValueError(
+                    f"Unknown dataset '{dataset}'. "
+                    f"Valid: {', '.join(self.VALID_DATASETS)}"
+                )
+            ds = sabr_config._DATASET_OPTION[dataset]
+            sabr_config.VIDEO_BIT_RATE = ds["VIDEO_BIT_RATE"]
+            sabr_config.REBUF_PENALTY = ds["REBUF_PENALTY"]
+            sabr_config.TEST_TRACES = ds["TEST_TRACES"]
+            sabr_config.TRAIN_TRACES = ds.get("TRAIN_TRACES", None)
+            sabr_config.VIDEO_SIZE_FILE = ds["VIDEO_SIZE_FILE"]
+            sabr_config.DATASET_NAME = dataset
 
         self.video_bit_rates = np.asarray(sabr_config.VIDEO_BIT_RATE, dtype=np.float64)
         if self.video_bit_rates.size == 0:
