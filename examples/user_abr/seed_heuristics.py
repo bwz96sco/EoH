@@ -22,13 +22,16 @@ def _harmonic_mean(x: np.ndarray, eps: float = 1e-6) -> float:
 
 
 def _ema(x: np.ndarray, alpha: float) -> float:
+    """SABR-compatible EMA: n=1 raw, n=2 average, n>=3 incremental EMA."""
     x = _to_1d_float(x)
     x = x[np.isfinite(x)]
     if x.size == 0:
         return 0.0
+    if x.size == 1:
+        return float(x[0])
     alpha = float(np.clip(alpha, 0.0, 1.0))
-    v = float(x[0])
-    for y in x[1:]:
+    v = (float(x[0]) + float(x[1])) / 2.0
+    for y in x[2:]:
         v = (1.0 - alpha) * v + alpha * float(y)
     return v
 
@@ -54,7 +57,7 @@ def score_bb(state: dict[str, Any], ctx: dict[str, Any]) -> np.ndarray:
         target = float(k - 1)
     else:
         frac = (buffer_s - reservoir_s) / max(cushion_s, 1e-6)
-        target = frac * float(k - 1)
+        target = float(int(frac * float(k - 1)))  # floor like SABR
 
     idx = np.arange(k, dtype=np.float64)
     return -np.abs(idx - target)
@@ -83,8 +86,35 @@ def score_bola(state: dict[str, Any], ctx: dict[str, Any]) -> np.ndarray:
     return scores.astype(np.float64)
 
 
+
+# QUETRA slack lookup tables from SABR (M/D/1/K queueing model).
+# Index i corresponds to rho = 0.5 + i*0.01, for i in 0..70.
+_QUETRA_SLACK_TABLES: dict[int, list[float]] = {
+    30: [29.25,29.2246,29.1983,29.1712,29.143,29.1139,29.0836,29.0522,29.0195,28.9855,28.95,28.9129,28.8742,28.8336,28.7911,28.7464,28.6994,28.6498,28.5975,28.5421,28.4833,28.4209,28.3543,28.2832,28.2069,28.125,28.0367,27.9411,27.8373,27.7241,27.6001,27.4636,27.3125,27.1444,26.9562,26.744,26.5031,26.2277,25.9103,25.542,25.1119,24.6069,24.0121,23.3115,22.4893,21.5325,20.4347,19.1998,17.8455,16.4048,14.9228,13.451,12.039,10.7266,9.54002,8.4909,7.57875,6.79468,6.12517,5.55493,5.06895,4.65353,4.29676,3.9886,3.72075,3.48639,3.28001,3.09712,2.93406,2.78786,2.65609],
+    60: [59.25,59.2246,59.1983,59.1712,59.143,59.1139,59.0836,59.0522,59.0195,58.9855,58.95,58.9129,58.8742,58.8336,58.7911,58.7464,58.6994,58.6498,58.5975,58.5421,58.4833,58.4209,58.3543,58.2831,58.2069,58.125,58.0367,57.9411,57.8373,57.7241,57.6,57.4634,57.3122,57.1438,56.955,56.7417,56.4986,56.2189,55.8934,55.5096,55.0503,54.4904,53.7932,52.9034,51.736,50.1614,47.9911,44.984,40.9181,35.7703,29.92,24.1077,19.0476,15.0712,12.1288,9.99749,8.44445,7.2892,6.40712,5.71575,5.16083,4.70615,4.32698,4.006,3.73079,3.49221,3.28339,3.09909,2.93521,2.78854,2.65649],
+    120: [119.25,119.225,119.198,119.171,119.143,119.114,119.084,119.052,119.02,118.985,118.95,118.913,118.874,118.834,118.791,118.746,118.699,118.65,118.598,118.542,118.483,118.421,118.354,118.283,118.207,118.125,118.037,117.941,117.837,117.724,117.6,117.463,117.312,117.144,116.955,116.742,116.499,116.219,115.893,115.51,115.05,114.489,113.79,112.892,111.697,110.026,107.527,103.433,95.9794,81.9,59.9193,38.0624,24.1326,16.7349,12.6553,10.1631,8.49674,7.3058,6.41242,5.71746,5.16138,4.70633,4.32703,4.00602,3.7308,3.49221,3.28339,3.09909,2.93521,2.78854,2.65649],
+}
+
+
+def _quetra_slack(rho: float, buffer_max_s: float) -> float:
+    """Look up slack from SABR's precomputed M/D/1/K table."""
+    if rho < 0.5:
+        return buffer_max_s
+    if rho >= 1.2:
+        return 0.0
+    bmax = int(buffer_max_s)
+    table = _QUETRA_SLACK_TABLES.get(bmax)
+    if table is None:
+        # Fallback: use buffer_max=60 table scaled proportionally.
+        table = _QUETRA_SLACK_TABLES[60]
+        idx = min(int((rho - 0.5) / 0.01), len(table) - 1)
+        return table[idx] * (buffer_max_s / 60.0)
+    idx = min(int((rho - 0.5) / 0.01), len(table) - 1)
+    return table[idx]
+
+
 def score_quetra(state: dict[str, Any], ctx: dict[str, Any]) -> np.ndarray:
-    """QUETRA-style: choose bitrate by matching buffer to slack derived from rho."""
+    """QUETRA: choose bitrate by matching buffer to M/D/1/K slack table."""
     bitrates = _get_bitrates_kbps(ctx)
     k = int(bitrates.size)
     buffer_s = float(state.get("buffer_s", 0.0))
@@ -99,16 +129,17 @@ def score_quetra(state: dict[str, Any], ctx: dict[str, Any]) -> np.ndarray:
     if buffer_s < low_res_ratio * buffer_max_s:
         return -np.arange(k, dtype=np.float64)
 
-    rho = pred_kbps / np.maximum(bitrates, 1.0)
-
     slack = np.empty(k, dtype=np.float64)
-    slack[rho < 0.5] = buffer_max_s
-    slack[rho >= 1.2] = 0.0
+    for i in range(k):
+        rho = pred_kbps / max(float(bitrates[i]), 1.0)
+        slack[i] = _quetra_slack(rho, buffer_max_s)
 
-    mid = (rho >= 0.5) & (rho < 1.2)
-    slack[mid] = buffer_max_s * (1.0 - (rho[mid] - 0.5) / (1.2 - 0.5))
+    # All slack equal to buffer_max → lowest bitrate (SABR behavior)
+    if slack[0] == buffer_max_s and slack[-1] == buffer_max_s:
+        return -np.arange(k, dtype=np.float64)
 
-    return -np.abs(slack - buffer_s)
+    # Tiny bias toward higher bitrate to match SABR tie-breaking (<=)
+    return -np.abs(slack - buffer_s) + np.arange(k, dtype=np.float64) * 1e-10
 
 
 def score_robust_mpc(state: dict[str, Any], ctx: dict[str, Any]) -> np.ndarray:
@@ -194,7 +225,7 @@ BB_CODE = textwrap.dedent(
             target = float(k - 1)
         else:
             frac = (buffer_s - reservoir_s) / max(cushion_s, 1e-6)
-            target = frac * float(k - 1)
+            target = float(int(frac * float(k - 1)))  # floor like SABR
 
         idx = np.arange(k, dtype=float)
         return -np.abs(idx - target)
@@ -233,19 +264,34 @@ QUETRA_CODE = textwrap.dedent(
     """
     import numpy as np
 
+    # QUETRA slack table (M/D/1/K queueing model, buffer_max=60).
+    # Index i corresponds to rho = 0.5 + i*0.01.
+    _SLACK_60 = [59.25,59.2246,59.1983,59.1712,59.143,59.1139,59.0836,59.0522,59.0195,58.9855,58.95,58.9129,58.8742,58.8336,58.7911,58.7464,58.6994,58.6498,58.5975,58.5421,58.4833,58.4209,58.3543,58.2831,58.2069,58.125,58.0367,57.9411,57.8373,57.7241,57.6,57.4634,57.3122,57.1438,56.955,56.7417,56.4986,56.2189,55.8934,55.5096,55.0503,54.4904,53.7932,52.9034,51.736,50.1614,47.9911,44.984,40.9181,35.7703,29.92,24.1077,19.0476,15.0712,12.1288,9.99749,8.44445,7.2892,6.40712,5.71575,5.16083,4.70615,4.32698,4.006,3.73079,3.49221,3.28339,3.09909,2.93521,2.78854,2.65649]
+
+    def _quetra_slack(rho, buffer_max_s):
+        if rho < 0.5:
+            return buffer_max_s
+        if rho >= 1.2:
+            return 0.0
+        idx = min(int((rho - 0.5) / 0.01), len(_SLACK_60) - 1)
+        return _SLACK_60[idx] * (buffer_max_s / 60.0)
+
     def _ema(x, alpha):
+        \"\"\"SABR-compatible EMA: n=1 raw, n=2 average, n>=3 incremental.\"\"\"
         x = np.asarray(x, dtype=float).reshape(-1)
         x = x[np.isfinite(x)]
         if x.size == 0:
             return 0.0
+        if x.size == 1:
+            return float(x[0])
         alpha = float(np.clip(alpha, 0.0, 1.0))
-        v = float(x[0])
-        for y in x[1:]:
+        v = (float(x[0]) + float(x[1])) / 2.0
+        for y in x[2:]:
             v = (1.0 - alpha) * v + alpha * float(y)
         return v
 
     def score(state, ctx):
-        \"\"\"QUETRA-style: match buffer to slack derived from rho.\"\"\"
+        \"\"\"QUETRA: match buffer to M/D/1/K slack table lookup.\"\"\"
         bitrates = np.asarray(ctx.get("bitrates_kbps", []), dtype=float).reshape(-1)
         k = int(bitrates.size)
         if k == 0:
@@ -262,13 +308,17 @@ QUETRA_CODE = textwrap.dedent(
         if buffer_s < low_res_ratio * buffer_max_s:
             return -np.arange(k, dtype=float)
 
-        rho = pred_kbps / np.maximum(bitrates, 1.0)
         slack = np.empty(k, dtype=float)
-        slack[rho < 0.5] = buffer_max_s
-        slack[rho >= 1.2] = 0.0
-        mid = (rho >= 0.5) & (rho < 1.2)
-        slack[mid] = buffer_max_s * (1.0 - (rho[mid] - 0.5) / (1.2 - 0.5))
-        return -np.abs(slack - buffer_s)
+        for i in range(k):
+            rho = pred_kbps / max(float(bitrates[i]), 1.0)
+            slack[i] = _quetra_slack(rho, buffer_max_s)
+
+        # All slack equal to buffer_max → lowest bitrate
+        if slack[0] == buffer_max_s and slack[-1] == buffer_max_s:
+            return -np.arange(k, dtype=float)
+
+        # Tiny bias toward higher bitrate to match SABR tie-breaking
+        return -np.abs(slack - buffer_s) + np.arange(k, dtype=float) * 1e-10
     """
 ).strip()
 
@@ -364,7 +414,7 @@ SEED_HEURISTICS: Sequence[dict[str, str]] = [
         "code": BOLA_CODE,
     },
     {
-        "algorithm": "{QUETRA: EMA throughput -> rho -> target slack buffer matching}",
+        "algorithm": "{QUETRA: EMA throughput -> rho -> M/D/1/K slack table lookup -> buffer matching}",
         "code": QUETRA_CODE,
     },
     {
