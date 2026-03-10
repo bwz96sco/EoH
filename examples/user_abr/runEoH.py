@@ -24,9 +24,12 @@ def _env_flag(name: str, default: bool = False) -> bool:
 def main() -> None:
     repo_root = Path(__file__).resolve().parents[2]
 
+    dataset = os.environ.get("DATASET", "FCC-18")
+    print(f"Dataset: {dataset}")
+
     problem = ABRProblem(
         trace_split="train",
-        dataset=os.environ.get("DATASET"),
+        dataset=dataset,
     )
     paras = Paras()
 
@@ -47,7 +50,8 @@ def main() -> None:
         ec_n_pop=int(os.environ.get("EC_N_POP", "10")),
         ec_operators=["e1", "e2", "m1", "m2", "m3"],
         exp_n_proc=int(os.environ.get("EXP_N_PROC", "4")),
-        exp_debug_mode=True,
+        exp_debug_mode=_env_flag("EXP_DEBUG_MODE", default=False),
+        eva_timeout=int(os.environ.get("EVA_TIMEOUT", "120")),
         exp_use_seed=True,
         exp_seed_path=str(seed_path),
         exp_output_path=str(repo_root),

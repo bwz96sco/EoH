@@ -8,7 +8,7 @@ class GetPrompts:
         self.prompt_task = (
             "Design a heuristic for Adaptive Bitrate (ABR) streaming. "
             "At each video chunk, you must score each bitrate action; the client picks argmax. "
-            "QoE is the sum over chunks of: bitrate_reward - δ*|Δbitrate| - μ*rebuffer_seconds. "
+            "QoE is the sum over chunks of: bitrate_kbps/1000 - smooth_penalty*|bitrate_change_kbps|/1000 - rebuf_penalty*rebuffer_seconds. "
             "The goal is to maximize QoE (the evaluator returns negative QoE for minimization)."
         )
         self.prompt_func_name = "score"
@@ -26,8 +26,8 @@ class GetPrompts:
             "'ctx' is a dict with constants/knobs:\n"
             "- bitrates_kbps: numpy array shape (K,)\n"
             "- chunk_len_s: float\n"
-            "- smooth_penalty (δ): float\n"
-            "- rebuf_penalty (μ): float\n"
+            "- smooth_penalty: float (penalty weight for bitrate switching)\n"
+            "- rebuf_penalty: float (penalty weight for rebuffering)\n"
             "- buffer_max_s: float\n"
             "- reservoir_s, cushion_s (BB), V (BOLA), alpha (QUETRA), robust_margin (MPC)\n"
             "Return 'scores' as a numpy array of shape (K,); higher is better."
