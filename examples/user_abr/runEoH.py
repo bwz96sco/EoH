@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -23,6 +24,7 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 def main() -> None:
     repo_root = Path(__file__).resolve().parents[2]
+    seed_path: Path | None = None
 
     dataset = os.environ.get("DATASET", "FCC-18")
     print(f"Dataset: {dataset}")
@@ -35,31 +37,41 @@ def main() -> None:
 
     # Seed population via the built-in `exp_use_seed` mechanism.
     seeds = problem.prompts.get_seed_heuristics()
-    seed_path = repo_root / "examples" / "user_abr" / "seeds.json"
-    seed_path.write_text(json.dumps(seeds, indent=2), encoding="utf-8")
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix="-user-abr-seeds.json",
+        encoding="utf-8",
+        delete=False,
+    ) as seed_file:
+        json.dump(seeds, seed_file, indent=2)
+        seed_path = Path(seed_file.name)
 
-    paras.set_paras(
-        method="eoh",
-        problem=problem,
-        llm_use_local=_env_flag("LLM_USE_LOCAL", default=False),
-        llm_local_url=os.environ.get("LLM_LOCAL_URL"),
-        llm_api_endpoint=os.environ.get("LLM_API_ENDPOINT"),
-        llm_api_key=os.environ.get("LLM_API_KEY"),
-        llm_model=os.environ.get("LLM_MODEL"),
-        ec_pop_size=len(seeds),
-        ec_n_pop=int(os.environ.get("EC_N_POP", "10")),
-        ec_operators=["e1", "e2", "m1", "m2", "m3"],
-        exp_n_proc=int(os.environ.get("EXP_N_PROC", "4")),
-        exp_debug_mode=_env_flag("EXP_DEBUG_MODE", default=False),
-        eva_timeout=int(os.environ.get("EVA_TIMEOUT", "120")),
-        exp_use_seed=True,
-        exp_seed_path=str(seed_path),
-        exp_output_path=str(repo_root),
-        eva_numba_decorator=False,
-    )
+    try:
+        paras.set_paras(
+            method="eoh",
+            problem=problem,
+            llm_use_local=_env_flag("LLM_USE_LOCAL", default=False),
+            llm_local_url=os.environ.get("LLM_LOCAL_URL"),
+            llm_api_endpoint=os.environ.get("LLM_API_ENDPOINT"),
+            llm_api_key=os.environ.get("LLM_API_KEY"),
+            llm_model=os.environ.get("LLM_MODEL"),
+            ec_pop_size=len(seeds),
+            ec_n_pop=int(os.environ.get("EC_N_POP", "10")),
+            ec_operators=["e1", "e2", "m1", "m2", "m3"],
+            exp_n_proc=int(os.environ.get("EXP_N_PROC", "4")),
+            exp_debug_mode=_env_flag("EXP_DEBUG_MODE", default=False),
+            eva_timeout=int(os.environ.get("EVA_TIMEOUT", "120")),
+            exp_use_seed=True,
+            exp_seed_path=str(seed_path),
+            exp_output_path=str(repo_root),
+            eva_numba_decorator=False,
+        )
 
-    evolution = eoh.EVOL(paras)
-    evolution.run()
+        evolution = eoh.EVOL(paras)
+        evolution.run()
+    finally:
+        if seed_path is not None:
+            seed_path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
