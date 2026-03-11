@@ -1,0 +1,8 @@
+{"file":".trellis/workflow.md","reason":"Project workflow and task process"}
+{"file":".trellis/spec/backend/index.md","reason":"Backend guidelines index"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Backend quality expectations for new code"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Prompt/evaluator/seed contract spans multiple layers"}
+{"file":"examples/user_abr/prompts.py","reason":"Prompt contract for generated heuristics"}
+{"file":"examples/user_abr/abr_api.py","reason":"Evaluator-owned ctx schema"}
+{"file":"examples/user_abr/seed_heuristics.py","reason":"Seed heuristics and generated seed code"}
+{"file":"examples/user_abr/prob.py","reason":"ABR evaluator uses ctx contract"}

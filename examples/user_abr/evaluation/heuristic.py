@@ -10,8 +10,8 @@ def score(state, ctx):
         return np.array([], dtype=float)
 
     buffer_s = float(state.get("buffer_s", 0.0))
-    reservoir_s = float(ctx.get("reservoir_s", 5.0))
-    cushion_s = float(ctx.get("cushion_s", 10.0))
+    reservoir_s = 5.0
+    cushion_s = 10.0
 
     if buffer_s < reservoir_s:
         target = 0.0

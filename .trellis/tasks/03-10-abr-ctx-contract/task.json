@@ -1,0 +1,60 @@
+{
+  "id": "abr-ctx-contract",
+  "name": "abr-ctx-contract",
+  "title": "Refactor ABR heuristic ctx contract",
+  "description": "Refactor the ABR heuristic prompt/evaluator contract so ctx exposes environment constants only.",
+  "status": "completed",
+  "dev_type": "backend",
+  "scope": "examples/user_abr",
+  "priority": "P2",
+  "creator": "ZhangBowen",
+  "assignee": "ZhangBowen",
+  "createdAt": "2026-03-10",
+  "completedAt": "2026-03-10",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 3,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [
+    {
+      "name": "Refactor ABR ctx builder to environment-only schema",
+      "status": "completed"
+    },
+    {
+      "name": "Move heuristic knobs into seed heuristics and prompt contract",
+      "status": "completed"
+    },
+    {
+      "name": "Verify with ABR smoke test",
+      "status": "completed"
+    }
+  ],
+  "relatedFiles": [
+    "examples/user_abr/abr_api.py",
+    "examples/user_abr/prompts.py",
+    "examples/user_abr/seed_heuristics.py",
+    "examples/user_abr/smoke_test.py",
+    ".trellis/spec/backend/quality-guidelines.md"
+  ],
+  "notes": "Smoke-tested with python3 examples/user_abr/smoke_test.py. Derived seeds.json was regenerated to match the new contract."
+}

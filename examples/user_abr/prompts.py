@@ -23,13 +23,12 @@ class GetPrompts:
             "- next_chunk_sizes_bytes: numpy array shape (K,) for next chunk sizes by bitrate\n"
             "- chunk_remain: int\n"
             "- rebuffer_sec: float (last rebuffer duration)\n"
-            "'ctx' is a dict with constants/knobs:\n"
+            "'ctx' is a dict with environment constants only:\n"
             "- bitrates_kbps: numpy array shape (K,)\n"
             "- chunk_len_s: float\n"
             "- smooth_penalty: float (penalty weight for bitrate switching)\n"
             "- rebuf_penalty: float (penalty weight for rebuffering)\n"
             "- buffer_max_s: float\n"
-            "- reservoir_s, cushion_s (BB), V (BOLA), alpha (QUETRA), robust_margin (MPC)\n"
             "Return 'scores' as a numpy array of shape (K,); higher is better."
         )
 
@@ -37,7 +36,9 @@ class GetPrompts:
             "Include the import 'import numpy as np'. "
             "Use deterministic logic without global side effects, and avoid mutating inputs. "
             "Always guard against empty throughput history and non-finite values. "
-            "Keep the function fast: O(K) or O(K*H) per step."
+            "Keep the function fast: O(K) or O(K*H) per step. "
+            "If your heuristic needs thresholds, safety margins, smoothing factors, or horizons, define them inside the code as local or module constants. "
+            "Do not expect undocumented keys in 'ctx'."
         )
 
     def get_task(self) -> str:
@@ -60,4 +61,3 @@ class GetPrompts:
 
     def get_seed_heuristics(self) -> list[dict[str, str]]:
         return list(SEED_HEURISTICS)
-

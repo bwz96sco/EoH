@@ -65,7 +65,7 @@ def extract_state(
 
 
 def make_ctx(config: Any, env: Any | None = None, **overrides: Any) -> dict[str, Any]:
-    """Build a context dict holding environment constants and heuristic knobs."""
+    """Build a context dict holding evaluator-owned environment constants."""
 
     def _get_attr(name: str, default: Any) -> Any:
         if hasattr(config, name):
@@ -85,31 +85,17 @@ def make_ctx(config: Any, env: Any | None = None, **overrides: Any) -> dict[str,
         if hasattr(env, "BUFFER_THRESH"):
             buffer_max_s = float(env.BUFFER_THRESH) / 1000.0
 
-    # Compute BOLA V from bitrate set (matches SABR bola.py vp formula).
-    bola_buf_min = float(overrides.pop("bola_buffer_min_s", 10.0))
-    bola_buf_target = float(overrides.pop("bola_buffer_target_s", 30.0))
-    if bitrates_kbps.size >= 2:
-        _utility_max = float(np.log(max(bitrates_kbps[-1], 1.0) / max(bitrates_kbps[0], 1.0)))
-        _gp = 1.0 + _utility_max / max(bola_buf_target / bola_buf_min - 1.0, 1e-6)
-        default_V = bola_buf_min / max(_gp - 1.0, 1e-6)
-    else:
-        default_V = 5.0
-
     ctx: dict[str, Any] = {
         "bitrates_kbps": bitrates_kbps,
         "chunk_len_s": float(chunk_len_s),
         "smooth_penalty": float(overrides.pop("smooth_penalty", 1.0)),
         "rebuf_penalty": float(overrides.pop("rebuf_penalty", rebuf_penalty)),
         "buffer_max_s": float(buffer_max_s),
-        # Algorithm-specific knobs (defaults match SABR baselines).
-        "reservoir_s": float(overrides.pop("reservoir_s", 5.0)),
-        "cushion_s": float(overrides.pop("cushion_s", 10.0)),
-        "bola_buffer_min_s": bola_buf_min,
-        "bola_buffer_target_s": bola_buf_target,
-        "V": float(overrides.pop("V", default_V)),
-        "alpha": float(overrides.pop("alpha", 0.1)),
-        "robust_margin": float(overrides.pop("robust_margin", 0.1)),
     }
-    ctx.update(overrides)
+    if overrides:
+        unexpected = ", ".join(sorted(overrides))
+        raise ValueError(
+            f"Unexpected ABR ctx overrides: {unexpected}. "
+            "Keep heuristic-specific knobs in the heuristic code."
+        )
     return ctx
-

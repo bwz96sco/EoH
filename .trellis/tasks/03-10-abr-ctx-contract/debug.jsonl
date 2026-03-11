@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Backend debugging expectations"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Prompt/evaluator contract debugging"}
+{"file":"examples/user_abr/prompts.py","reason":"Prompt contract debugging"}
+{"file":"examples/user_abr/abr_api.py","reason":"Ctx schema debugging"}
+{"file":"examples/user_abr/seed_heuristics.py","reason":"Seed heuristic debugging"}

@@ -279,11 +279,12 @@ def _compare_bola(prob, env_mod, bitrates, k):
     gp_sabr = 1.0 + np.log(bitrates[-1] / float(bitrates[0])) / (30.0 / 10.0 - 1.0)
     vp_sabr = 10.0 / (gp_sabr - 1.0)
 
-    # Seed uses ctx["V"] which defaults to 5.0
-    v_seed = float(prob.ctx.get("V", 5.0))
+    # Seed computes V from bitrates and fixed buffer constants.
+    gp_seed = 1.0 + np.log(bitrates[-1] / float(bitrates[0])) / (30.0 / 10.0 - 1.0)
+    v_seed = 10.0 / (gp_seed - 1.0)
 
     print(f"  SABR gp = {gp_sabr:.4f}, vp = {vp_sabr:.4f}")
-    print(f"  Seed V (from ctx) = {v_seed:.4f}")
+    print(f"  Seed V = {v_seed:.4f}")
     print(f"  -> {'MATCH' if abs(vp_sabr - v_seed) < 0.01 else 'MISMATCH'}: "
           f"delta = {abs(vp_sabr - v_seed):.4f}")
     print()
@@ -308,7 +309,7 @@ def _compare_bola(prob, env_mod, bitrates, k):
         match = "OK" if seed_idx == sabr_idx else "DIFF"
         print(f"  {buf:9.1f} | {seed_idx:8d} | {sabr_idx:8d} | {match}")
 
-    print(f"\n  Root cause: make_ctx sets V=5.0, but SABR computes vp={vp_sabr:.4f}")
+    print("\n  Root cause should now be from tie-breaking or numeric details, not hidden ctx knobs.")
 
 
 def _compare_quetra(prob, env_mod, bitrates, k, bitrate_list_bps):

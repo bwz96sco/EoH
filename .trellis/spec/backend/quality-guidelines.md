@@ -116,6 +116,44 @@ class MyProblem:
         ...
 ```
 
+### Explicit Prompt/Evaluator Contracts
+
+For LLM-evolved problems that pass helper inputs such as `state` and `ctx`, keep the contract explicit and synchronized across prompt text, evaluator code, and seed heuristics.
+
+**Convention**:
+- `state` should contain per-step runtime observations only
+- Evaluator-owned `ctx` should contain shared environment constants only
+- Heuristic-specific thresholds, horizons, and safety margins should live inside the heuristic code, not as hidden `ctx` fields
+
+**Example** (`examples/user_abr/`):
+
+```python
+# Good: ctx only exposes environment constants used by every heuristic
+ctx = {
+    "bitrates_kbps": bitrates_kbps,
+    "chunk_len_s": chunk_len_s,
+    "smooth_penalty": smooth_penalty,
+    "rebuf_penalty": rebuf_penalty,
+    "buffer_max_s": buffer_max_s,
+}
+
+def score(state, ctx):
+    robust_margin = 0.1
+    horizon = 3
+    ...
+```
+
+```python
+# Bad: evaluator injects heuristic-owned knobs that the prompt may forget to document
+ctx = {
+    "bitrates_kbps": bitrates_kbps,
+    "robust_margin": 0.1,
+    "mpc_horizon": 3,
+}
+```
+
+**Why**: Hidden `ctx` fields cause prompt/schema drift and make evolved heuristics depend on evaluator internals instead of their own code.
+
 ### Module-as-Strategy Pattern
 
 Selection and management strategies are plain modules with a single function:

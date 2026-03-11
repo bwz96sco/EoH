@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend guidelines index"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Backend quality review"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Verify prompt/evaluator contract consistency"}
+{"file":"examples/user_abr/prompts.py","reason":"Check documented input contract"}
+{"file":"examples/user_abr/abr_api.py","reason":"Check evaluator-owned ctx schema"}
+{"file":"examples/user_abr/seed_heuristics.py","reason":"Check heuristic-owned parameters"}
+{"file":"examples/user_abr/smoke_test.py","reason":"Check verification coverage"}

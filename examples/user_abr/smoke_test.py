@@ -28,12 +28,6 @@ def unit_test_seed_functions() -> None:
         "smooth_penalty": 1.0,
         "rebuf_penalty": 4.3,
         "buffer_max_s": 60.0,
-        "reservoir_s": 5.0,
-        "cushion_s": 10.0,
-        "V": 5.0,
-        "alpha": 0.1,
-        "robust_margin": 0.1,
-        "mpc_horizon": 3,
     }
     state = {
         "buffer_s": 12.0,
@@ -65,4 +59,3 @@ if __name__ == "__main__":
     unit_test_seed_functions()
     integration_test_seed_population()
     print("OK")
-
