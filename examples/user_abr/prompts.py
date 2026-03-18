@@ -19,8 +19,9 @@ class GetPrompts:
             "'state' is a dict with:\n"
             "- buffer_s: float\n"
             "- last_bitrate_idx: int (0-based)\n"
-            "- throughput_hist_mbps: numpy array of recent throughputs (Mbps), may be empty\n"
+            "- throughput_hist_mbps: numpy array of recent throughputs (Mbps), newest last, up to 10 samples\n"
             "- next_chunk_sizes_bytes: numpy array shape (K,) for next chunk sizes by bitrate\n"
+            "- future_chunk_sizes_bytes: numpy array shape (H, K) for up to 5 upcoming chunks by bitrate; the first row matches next_chunk_sizes_bytes when available\n"
             "- chunk_remain: int\n"
             "- rebuffer_sec: float (last rebuffer duration)\n"
             "'ctx' is a dict with environment constants only:\n"
@@ -29,6 +30,7 @@ class GetPrompts:
             "- smooth_penalty: float (penalty weight for bitrate switching)\n"
             "- rebuf_penalty: float (penalty weight for rebuffering)\n"
             "- buffer_max_s: float\n"
+            "- link_rtt_s: float\n"
             "Return 'scores' as a numpy array of shape (K,); higher is better."
         )
 
@@ -36,7 +38,8 @@ class GetPrompts:
             "Include the import 'import numpy as np'. "
             "Use deterministic logic without global side effects, and avoid mutating inputs. "
             "Always guard against empty throughput history and non-finite values. "
-            "Keep the function fast: O(K) or O(K*H) per step. "
+            "Keep the function fast: O(K) or O(K*H) per step when possible; a small fixed-horizon combinatorial search is acceptable if H stays tiny. "
+            "If you plan ahead, only use the chunk-size horizon already provided in 'state'. "
             "If your heuristic needs thresholds, safety margins, smoothing factors, or horizons, define them inside the code as local or module constants. "
             "Do not expect undocumented keys in 'ctx'."
         )

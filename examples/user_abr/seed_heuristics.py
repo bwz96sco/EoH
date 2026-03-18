@@ -134,41 +134,102 @@ ROBUST_MPC_CODE = textwrap.dedent(
             return 0.0
         return float(x.size / np.sum(1.0 / np.maximum(x, eps)))
 
+    def _sabr_future_bandwidth(throughput_hist_mbps, eps=1e-6):
+        hist_mbytes_per_s = np.asarray(throughput_hist_mbps, dtype=float).reshape(-1) / 8.0
+        hist_mbytes_per_s = hist_mbytes_per_s[np.isfinite(hist_mbytes_per_s)]
+        if hist_mbytes_per_s.size == 0:
+            return 0.0
+
+        current_est = _harmonic_mean(hist_mbytes_per_s[-5:], eps)
+        past_errors = []
+        for idx, sample in enumerate(hist_mbytes_per_s):
+            sample = max(float(sample), eps)
+            if idx == 0:
+                past_errors.append(0.0)
+                continue
+            prev_est = _harmonic_mean(hist_mbytes_per_s[max(0, idx - 5):idx], eps)
+            past_errors.append(abs(prev_est - sample) / sample)
+
+        max_error = max(past_errors[-5:]) if past_errors else 0.0
+        return current_est / (1.0 + max_error)
+
     def score(state, ctx):
-        \"\"\"RobustMPC-lite: short horizon simulation assuming constant quality.\"\"\"
+        \"\"\"RobustMPC: SABR-style robust bandwidth prediction + exact horizon search.\"\"\"
         bitrates = np.asarray(ctx.get("bitrates_kbps", []), dtype=float).reshape(-1)
         k = int(bitrates.size)
         next_sizes = np.asarray(state.get("next_chunk_sizes_bytes", []), dtype=float).reshape(-1)
-        if k == 0 or next_sizes.size != k:
+        future_sizes = np.asarray(state.get("future_chunk_sizes_bytes", []), dtype=float)
+        if k == 0:
+            return np.zeros_like(bitrates, dtype=float)
+        if future_sizes.ndim == 1:
+            if future_sizes.size == 0:
+                future_sizes = np.empty((0, k), dtype=float)
+            else:
+                future_sizes = future_sizes.reshape(1, -1)
+        if future_sizes.size == 0 and next_sizes.size == k:
+            future_sizes = next_sizes.reshape(1, -1)
+        if future_sizes.ndim != 2 or future_sizes.shape[1] != k:
             return np.zeros_like(bitrates, dtype=float)
 
-        margin = 0.1
-        horizon = 3
+        horizon = 5
+        buffer_w = 0.0
         buffer_s = float(state.get("buffer_s", 0.0))
         last_idx = int(np.clip(int(state.get("last_bitrate_idx", 0)), 0, k - 1))
-        last_kbps = float(bitrates[last_idx])
-
         chunk_len_s = float(ctx.get("chunk_len_s", 4.0))
+        link_rtt_s = float(ctx.get("link_rtt_s", 0.08))
         rebuf_penalty = float(ctx.get("rebuf_penalty", 4.3))
         smooth_penalty = float(ctx.get("smooth_penalty", 1.0))
-        horizon = max(1, min(horizon, int(state.get("chunk_remain", horizon))))
+        horizon = max(0, min(horizon, int(state.get("chunk_remain", horizon)), int(future_sizes.shape[0])))
+        if horizon <= 0:
+            return np.zeros_like(bitrates, dtype=float)
+        future_sizes = future_sizes[:horizon]
 
         hist_mbps = np.asarray(state.get("throughput_hist_mbps", []), dtype=float)
-        pred_mbps = _harmonic_mean(hist_mbps) * max(0.0, 1.0 - margin)
-        pred_mbps = max(pred_mbps, 1e-3)
+        predict_tput = max(_sabr_future_bandwidth(hist_mbps), 1e-6)
 
-        scores = np.empty(k, dtype=float)
-        for i in range(k):
-            buf = buffer_s
-            total = 0.0
-            dl_s = float(next_sizes[i]) * 8.0 / (pred_mbps * 1e6)
-            for t in range(horizon):
-                rebuf_s = max(dl_s - buf, 0.0)
-                buf = max(buf - dl_s, 0.0) + chunk_len_s
-                total += float(bitrates[i]) / 1000.0 - rebuf_penalty * rebuf_s
-                if t == 0:
-                    total -= smooth_penalty * abs(float(bitrates[i]) - last_kbps) / 1000.0
-            scores[i] = total
+        max_reward = -np.inf
+        best_first = 0
+        for combo_idx in range(k ** horizon):
+            combo = []
+            tmp = combo_idx
+            for _ in range(horizon):
+                combo.append(int(tmp % k))
+                tmp //= k
+
+            curr_buffer = buffer_s
+            curr_rebuffer_time = 0.0
+            reward_total = 0.0
+            curr_last_idx = last_idx
+
+            for position in range(horizon):
+                chunk_quality = combo[position]
+                chunk_size = float(future_sizes[position, chunk_quality])
+                download_time = chunk_size / (predict_tput * 1e6) + link_rtt_s
+
+                if curr_buffer < download_time:
+                    curr_rebuffer_time += download_time - curr_buffer
+                    curr_buffer = 0.0
+                else:
+                    curr_buffer -= download_time
+                curr_buffer += chunk_len_s
+
+                reward = (
+                    float(bitrates[chunk_quality]) / 1000.0
+                    - rebuf_penalty * curr_rebuffer_time
+                    - smooth_penalty
+                    * abs(float(bitrates[chunk_quality]) - float(bitrates[curr_last_idx]))
+                    / 1000.0
+                    - buffer_w * curr_buffer
+                )
+                curr_last_idx = chunk_quality
+                reward_total += reward
+
+            if reward_total >= max_reward:
+                max_reward = reward_total
+                best_first = combo[0]
+
+        scores = np.full(k, -np.inf, dtype=float)
+        scores[best_first] = 0.0
         return scores
     """
 ).strip()
@@ -238,7 +299,7 @@ SEED_HEURISTICS: Sequence[dict[str, str]] = [
         "code": QUETRA_CODE,
     },
     {
-        "algorithm": "{RobustMPC-lite: harmonic-mean bandwidth + short horizon simulation}",
+        "algorithm": "{RobustMPC: SABR-style robust bandwidth prediction + exact horizon search}",
         "code": ROBUST_MPC_CODE,
     },
     {

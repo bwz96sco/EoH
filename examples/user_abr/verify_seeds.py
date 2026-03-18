@@ -8,12 +8,11 @@ from __future__ import annotations
 
 import sys
 from collections import deque
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from abr_api import extract_state, make_ctx
+from abr_api import extract_future_chunk_sizes, extract_state
 from prob import ABRProblem
 from seed_heuristics import (
     score_bb,
@@ -123,6 +122,119 @@ class SABRQuetra:
         return min_index
 
 
+def _harmonic_mean(x: np.ndarray, eps: float = 1e-6) -> float:
+    x = np.asarray(x, dtype=np.float64).reshape(-1)
+    x = x[np.isfinite(x)]
+    x = x[x > eps]
+    if x.size == 0:
+        return 0.0
+    return float(x.size / np.sum(1.0 / np.maximum(x, eps)))
+
+
+def sabr_rmpc_future_bandwidth(throughput_hist_mbps: np.ndarray, eps: float = 1e-6) -> float:
+    """Reconstruct SABR robustMPC bandwidth prediction from observed throughput history."""
+    hist_mbytes_per_s = np.asarray(throughput_hist_mbps, dtype=np.float64).reshape(-1) / 8.0
+    hist_mbytes_per_s = hist_mbytes_per_s[np.isfinite(hist_mbytes_per_s)]
+    if hist_mbytes_per_s.size == 0:
+        return 0.0
+
+    current_est = _harmonic_mean(hist_mbytes_per_s[-5:], eps)
+    past_errors: list[float] = []
+    for idx, sample in enumerate(hist_mbytes_per_s):
+        sample = max(float(sample), eps)
+        if idx == 0:
+            past_errors.append(0.0)
+            continue
+        prev_est = _harmonic_mean(hist_mbytes_per_s[max(0, idx - 5):idx], eps)
+        past_errors.append(abs(prev_est - sample) / sample)
+
+    max_error = max(past_errors[-5:]) if past_errors else 0.0
+    return current_est / (1.0 + max_error)
+
+
+def sabr_rmpc_decision(state: dict[str, Any], ctx: dict[str, Any]) -> int:
+    """Faithful Python port of SABR robust_mpc.cc decision logic."""
+    bitrates = np.asarray(ctx.get("bitrates_kbps", []), dtype=np.float64).reshape(-1)
+    k = int(bitrates.size)
+    if k == 0:
+        return 0
+
+    future_sizes = np.asarray(state.get("future_chunk_sizes_bytes", []), dtype=np.float64)
+    next_sizes = np.asarray(state.get("next_chunk_sizes_bytes", []), dtype=np.float64).reshape(-1)
+    if future_sizes.ndim == 1:
+        if future_sizes.size == 0:
+            future_sizes = np.empty((0, k), dtype=np.float64)
+        else:
+            future_sizes = future_sizes.reshape(1, -1)
+    if future_sizes.size == 0 and next_sizes.size == k:
+        future_sizes = next_sizes.reshape(1, -1)
+    if future_sizes.ndim != 2 or future_sizes.shape[1] != k:
+        return 0
+
+    horizon = max(
+        0,
+        min(
+            5,
+            int(state.get("chunk_remain", future_sizes.shape[0])),
+            int(future_sizes.shape[0]),
+        ),
+    )
+    if horizon <= 0:
+        return 0
+    future_sizes = future_sizes[:horizon]
+
+    buffer_s = float(state.get("buffer_s", 0.0))
+    last_idx = int(np.clip(int(state.get("last_bitrate_idx", 0)), 0, k - 1))
+    chunk_len_s = float(ctx.get("chunk_len_s", 4.0))
+    link_rtt_s = float(ctx.get("link_rtt_s", 0.08))
+    rebuf_penalty = float(ctx.get("rebuf_penalty", 4.3))
+    smooth_penalty = float(ctx.get("smooth_penalty", 1.0))
+    buffer_w = 0.0
+    predict_tput = max(sabr_rmpc_future_bandwidth(state.get("throughput_hist_mbps", [])), 1e-6)
+
+    max_reward = -np.inf
+    best_first = 0
+    for combo_idx in range(k ** horizon):
+        combo = []
+        tmp = combo_idx
+        for _ in range(horizon):
+            combo.append(int(tmp % k))
+            tmp //= k
+
+        curr_buffer = buffer_s
+        curr_rebuffer_time = 0.0
+        reward_total = 0.0
+        curr_last_idx = last_idx
+        for position in range(horizon):
+            chunk_quality = combo[position]
+            chunk_size = float(future_sizes[position, chunk_quality])
+            download_time = chunk_size / (predict_tput * 1e6) + link_rtt_s
+
+            if curr_buffer < download_time:
+                curr_rebuffer_time += download_time - curr_buffer
+                curr_buffer = 0.0
+            else:
+                curr_buffer -= download_time
+            curr_buffer += chunk_len_s
+
+            reward = (
+                float(bitrates[chunk_quality]) / 1000.0
+                - rebuf_penalty * curr_rebuffer_time
+                - smooth_penalty
+                * abs(float(bitrates[chunk_quality]) - float(bitrates[curr_last_idx]))
+                / 1000.0
+                - buffer_w * curr_buffer
+            )
+            curr_last_idx = chunk_quality
+            reward_total += reward
+
+        if reward_total >= max_reward:
+            max_reward = reward_total
+            best_first = combo[0]
+
+    return best_first
+
+
 # ---------------------------------------------------------------------------
 # Simulation harness
 # ---------------------------------------------------------------------------
@@ -159,6 +271,12 @@ def run_comparison(dataset: str = "FCC-18", max_traces: int | None = 5) -> None:
     print("=" * 60)
     _compare_quetra(prob, env_mod, bitrates, k, bitrate_list_bps)
 
+    # --- Robust MPC comparison ---
+    print("\n" + "=" * 60)
+    print("RobustMPC: Seed vs SABR")
+    print("=" * 60)
+    _compare_robust_mpc(prob, env_mod, bitrates, k)
+
 
 def _simulate_dual(
     prob: ABRProblem,
@@ -177,7 +295,7 @@ def _simulate_dual(
 
     last_bit_rate = 1
     bit_rate = 1
-    throughput_history = deque(maxlen=8)
+    throughput_history = deque(maxlen=prob.HISTORY_WINDOW)
 
     seed_qoe = 0.0
     sabr_qoe = 0.0
@@ -206,6 +324,11 @@ def _simulate_dual(
 
         last_bit_rate = bit_rate
         total_steps += 1
+        future_chunk_sizes = extract_future_chunk_sizes(
+            env,
+            video_chunk_remain,
+            horizon=prob.MPC_FUTURE_CHUNK_COUNT,
+        )
 
         state = extract_state(
             obs=None,
@@ -214,6 +337,7 @@ def _simulate_dual(
                   end_of_video, video_chunk_remain),
             last_action=last_bit_rate,
             throughput_history=np.asarray(throughput_history, dtype=np.float64),
+            future_chunk_sizes_bytes=future_chunk_sizes,
         )
 
         # Seed decision
@@ -249,7 +373,7 @@ def _simulate_dual(
     print(f"  Total steps: {total_steps}, Mismatches: {mismatches} "
           f"({100*mismatches/max(total_steps,1):.1f}%)")
     return {"qoe": seed_qoe / max(video_count, 1), "steps": total_steps}, \
-           {"mismatches": mismatches}
+           {"mismatches": mismatches, "steps": total_steps}
 
 
 def _compare_bb(prob, env_mod, bitrates, k):
@@ -269,8 +393,7 @@ def _compare_bb(prob, env_mod, bitrates, k):
 
     # Key insight
     print("\n  Note: SABR BB uses int() truncation (floor).")
-    print("  Seed BB uses argmax(-|idx - target|) which rounds to nearest.")
-    print("  Difference occurs when fractional target > X.5")
+    print("  Seed BB now floors the target before scoring, so the decisions match SABR.")
 
 
 def _compare_bola(prob, env_mod, bitrates, k):
@@ -393,6 +516,32 @@ def _compare_quetra(prob, env_mod, bitrates, k, bitrate_list_bps):
 
         match = "OK" if seed_idx == sabr_idx else "DIFF"
         print(f"  {buf:9.1f} | {seed_idx:8d} | {sabr_idx:8d} | {match}")
+
+
+def _compare_robust_mpc(prob, env_mod, bitrates, k):
+    """Compare robust MPC seed vs faithful SABR robust MPC port."""
+    print("  Future-bandwidth reconstruction:")
+    test_histories_kbps = [
+        [1600],
+        [1600, 2200],
+        [1600, 2200, 1800, 2400, 2100],
+        [1600, 2200, 1800, 2400, 2100, 2600, 2300, 2800, 2500, 3000],
+    ]
+    for hist_kbps in test_histories_kbps:
+        hist_mbps = np.asarray(hist_kbps, dtype=np.float64) / 1000.0
+        future_bw = sabr_rmpc_future_bandwidth(hist_mbps)
+        print(f"  hist={hist_kbps} -> future_bw={future_bw:.6f} MB/s")
+
+    print("\n  Trace-level decision comparison:")
+    _, stats = _simulate_dual(
+        prob,
+        env_mod,
+        score_robust_mpc,
+        lambda **kwargs: sabr_rmpc_decision(kwargs["state"], prob.ctx),
+        "robust_mpc",
+    )
+    mismatch_rate = 100.0 * stats["mismatches"] / max(stats["steps"], 1)
+    print(f"  -> mismatch rate = {mismatch_rate:.1f}%")
 
 
 if __name__ == "__main__":

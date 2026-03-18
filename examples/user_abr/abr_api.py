@@ -11,6 +11,8 @@ def extract_state(
     info: Any,
     last_action: int,
     throughput_history: Sequence[float] | np.ndarray,
+    *,
+    future_chunk_sizes_bytes: Sequence[Sequence[float]] | np.ndarray | None = None,
 ) -> dict[str, Any]:
     """Convert SABR env outputs to an LLM-friendly state dict.
 
@@ -23,6 +25,10 @@ def extract_state(
         info: Either a dict or the 8-tuple returned by `get_video_chunk()`.
         last_action: Previous bitrate index (0-based).
         throughput_history: Recent throughput measurements in **Kbps**.
+        future_chunk_sizes_bytes: Optional matrix of future chunk sizes in bytes
+            with shape `(H, K)`, where `H` is the planning horizon and `K` is the
+            number of bitrate actions. If omitted, the state falls back to a
+            single-step matrix built from `next_chunk_sizes_bytes`.
     """
 
     if isinstance(info, Mapping):
@@ -54,14 +60,55 @@ def extract_state(
     throughput_hist_kbps = np.asarray(throughput_history, dtype=np.float64)
     throughput_hist_mbps = throughput_hist_kbps / 1000.0
 
+    if future_chunk_sizes_bytes is None:
+        if next_chunk_sizes_bytes.size == 0:
+            future_chunk_sizes = np.empty((0, 0), dtype=np.float64)
+        else:
+            future_chunk_sizes = next_chunk_sizes_bytes.reshape(1, -1)
+    else:
+        future_chunk_sizes = np.asarray(future_chunk_sizes_bytes, dtype=np.float64)
+        if future_chunk_sizes.ndim == 1:
+            if future_chunk_sizes.size == 0:
+                future_chunk_sizes = np.empty((0, 0), dtype=np.float64)
+            else:
+                future_chunk_sizes = future_chunk_sizes.reshape(1, -1)
+
     return {
         "buffer_s": float(buffer_s),
         "last_bitrate_idx": int(last_action),
         "throughput_hist_mbps": throughput_hist_mbps,
         "next_chunk_sizes_bytes": next_chunk_sizes_bytes,
+        "future_chunk_sizes_bytes": future_chunk_sizes,
         "chunk_remain": int(chunk_remain),
         "rebuffer_sec": float(rebuffer_sec),
     }
+
+
+def extract_future_chunk_sizes(
+    env: Any,
+    video_chunk_remain: int,
+    *,
+    horizon: int = 5,
+) -> np.ndarray:
+    """Build a `(H, K)` chunk-size matrix for upcoming chunks from SABR env state."""
+
+    plan_horizon = int(max(0, min(horizon, int(video_chunk_remain))))
+    if plan_horizon <= 0:
+        return np.empty((0, 0), dtype=np.float64)
+
+    video_size = getattr(env, "video_size", None)
+    chunk_idx = int(getattr(env, "video_chunk_counter", 0))
+    if video_size is None:
+        return np.empty((0, 0), dtype=np.float64)
+
+    bitrate_levels = len(video_size)
+    future_sizes = np.empty((plan_horizon, bitrate_levels), dtype=np.float64)
+    for position in range(plan_horizon):
+        future_chunk_idx = chunk_idx + position
+        for quality in range(bitrate_levels):
+            future_sizes[position, quality] = float(video_size[quality][future_chunk_idx])
+
+    return future_sizes
 
 
 def make_ctx(config: Any, env: Any | None = None, **overrides: Any) -> dict[str, Any]:
@@ -79,11 +126,14 @@ def make_ctx(config: Any, env: Any | None = None, **overrides: Any) -> dict[str,
 
     chunk_len_s = float(overrides.pop("chunk_len_s", 4.0))
     buffer_max_s = float(overrides.pop("buffer_max_s", 60.0))
+    link_rtt_s = float(overrides.pop("link_rtt_s", 0.08))
     if env is not None:
         if hasattr(env, "VIDEO_CHUNCK_LEN"):
             chunk_len_s = float(env.VIDEO_CHUNCK_LEN) / 1000.0
         if hasattr(env, "BUFFER_THRESH"):
             buffer_max_s = float(env.BUFFER_THRESH) / 1000.0
+        if hasattr(env, "LINK_RTT"):
+            link_rtt_s = float(env.LINK_RTT) / 1000.0
 
     ctx: dict[str, Any] = {
         "bitrates_kbps": bitrates_kbps,
@@ -91,6 +141,7 @@ def make_ctx(config: Any, env: Any | None = None, **overrides: Any) -> dict[str,
         "smooth_penalty": float(overrides.pop("smooth_penalty", 1.0)),
         "rebuf_penalty": float(overrides.pop("rebuf_penalty", rebuf_penalty)),
         "buffer_max_s": float(buffer_max_s),
+        "link_rtt_s": float(link_rtt_s),
     }
     if overrides:
         unexpected = ", ".join(sorted(overrides))

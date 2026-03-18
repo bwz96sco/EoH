@@ -154,6 +154,77 @@ ctx = {
 
 **Why**: Hidden `ctx` fields cause prompt/schema drift and make evolved heuristics depend on evaluator internals instead of their own code.
 
+## Scenario: ABR Multi-Step State Contract
+
+### 1. Scope / Trigger
+- Trigger: A heuristic needs exact runtime lookahead data, such as SABR-style robust MPC that scores action sequences over several upcoming chunks.
+
+### 2. Signatures
+
+```python
+def extract_state(
+    obs,
+    info,
+    last_action,
+    throughput_history,
+    *,
+    future_chunk_sizes_bytes=None,
+) -> dict[str, Any]:
+    ...
+
+def score(state, ctx):
+    ...
+```
+
+### 3. Contracts
+- `state` may grow with additional runtime observations when the evaluator can derive them at each step.
+- For ABR lookahead, put future chunk sizes in `state["future_chunk_sizes_bytes"]` as shape `(H, K)`.
+- `ctx` keeps shared environment constants only, such as `chunk_len_s`, `rebuf_penalty`, `smooth_penalty`, `buffer_max_s`, and `link_rtt_s`.
+- Keep heuristic-owned knobs such as MPC horizon or buffer penalties inside the heuristic code.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+|-----------|-------------------|
+| `future_chunk_sizes_bytes` missing | Evaluator or helper should fall back to a single-step matrix built from `next_chunk_sizes_bytes` |
+| `future_chunk_sizes_bytes.shape[1] != len(ctx["bitrates_kbps"])` | Heuristic should reject the input and return a safe default score vector |
+| Extra heuristic knobs passed through `ctx` | `make_ctx()` should raise `ValueError` |
+
+### 5. Good/Base/Bad Cases
+- Good: `state` includes `future_chunk_sizes_bytes` because it changes every chunk and depends on the current chunk index.
+- Base: `state` includes only `next_chunk_sizes_bytes` when no multi-step planner needs more lookahead.
+- Bad: `ctx` includes `mpc_horizon`, `robust_margin`, or other algorithm-specific tuning fields.
+
+### 6. Tests Required
+- Smoke test: seed functions accept the widened `state` and still return finite score arrays.
+- Verification test: SABR-style robust MPC seed matches a faithful port on the same per-step states.
+- Contract test: prompt text, evaluator state construction, and seed expectations list the same fields.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+ctx = {
+    "bitrates_kbps": bitrates_kbps,
+    "mpc_horizon": 5,
+    "link_rtt_s": 0.08,
+}
+```
+
+#### Correct
+
+```python
+state = {
+    "next_chunk_sizes_bytes": next_chunk_sizes_bytes,
+    "future_chunk_sizes_bytes": future_chunk_sizes_bytes,
+}
+ctx = {
+    "bitrates_kbps": bitrates_kbps,
+    "link_rtt_s": 0.08,
+}
+```
+
 ### Module-as-Strategy Pattern
 
 Selection and management strategies are plain modules with a single function:

@@ -28,12 +28,21 @@ def unit_test_seed_functions() -> None:
         "smooth_penalty": 1.0,
         "rebuf_penalty": 4.3,
         "buffer_max_s": 60.0,
+        "link_rtt_s": 0.08,
     }
     state = {
         "buffer_s": 12.0,
         "last_bitrate_idx": 1,
-        "throughput_hist_mbps": np.array([2.0, 1.8, 2.2, 1.9], dtype=float),
+        "throughput_hist_mbps": np.array([2.0, 1.8, 2.2, 1.9, 2.1, 1.7], dtype=float),
         "next_chunk_sizes_bytes": np.array([400000, 800000, 1200000, 1800000, 2800000, 4200000], dtype=float),
+        "future_chunk_sizes_bytes": np.array(
+            [
+                [400000, 800000, 1200000, 1800000, 2800000, 4200000],
+                [390000, 790000, 1190000, 1790000, 2790000, 4190000],
+                [410000, 810000, 1210000, 1810000, 2810000, 4210000],
+            ],
+            dtype=float,
+        ),
         "chunk_remain": 40,
         "rebuffer_sec": 0.0,
     }

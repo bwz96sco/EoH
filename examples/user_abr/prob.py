@@ -10,14 +10,15 @@ from typing import Any
 
 import numpy as np
 
-from abr_api import extract_state, make_ctx
+from abr_api import extract_future_chunk_sizes, extract_state, make_ctx
 from feedback import format_feedback
 from prompts import GetPrompts
 
 
 class ABRProblem:
     DEFAULT_QUALITY = 1
-    HISTORY_WINDOW = 8
+    HISTORY_WINDOW = 10
+    MPC_FUTURE_CHUNK_COUNT = 5
     EPS = 1e-6
 
     VALID_DATASETS = (
@@ -154,6 +155,17 @@ class ABRProblem:
             return None
         return scores_arr
 
+    def _build_future_chunk_sizes(
+        self,
+        env: Any,
+        video_chunk_remain: int,
+    ) -> np.ndarray:
+        return extract_future_chunk_sizes(
+            env,
+            video_chunk_remain,
+            horizon=self.MPC_FUTURE_CHUNK_COUNT,
+        )
+
     def _simulate(self, score_fn) -> tuple[float | None, dict[str, float] | None]:
         env = self._sabr_env_module.Environment(
             all_cooked_time=self.all_cooked_time,
@@ -212,6 +224,10 @@ class ABRProblem:
             throughput_history.append(throughput_kbps)
 
             last_bit_rate = bit_rate
+            future_chunk_sizes_bytes = self._build_future_chunk_sizes(
+                env,
+                video_chunk_remain,
+            )
 
             state = extract_state(
                 obs=None,
@@ -227,6 +243,7 @@ class ABRProblem:
                 ),
                 last_action=last_bit_rate,
                 throughput_history=np.asarray(throughput_history, dtype=np.float64),
+                future_chunk_sizes_bytes=future_chunk_sizes_bytes,
             )
 
             try:
@@ -284,4 +301,3 @@ class ABRProblem:
     def evaluate(self, code_string: str) -> float | None:
         fitness, _ = self.evaluate_with_details(code_string)
         return fitness
-
