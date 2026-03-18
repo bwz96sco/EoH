@@ -287,23 +287,23 @@ _ema = _QUETRA_MODULE._ema
 
 SEED_HEURISTICS: Sequence[dict[str, str]] = [
     {
-        "algorithm": "{BB: buffer-based mapping from buffer occupancy to bitrate index}",
+        "algorithm": "{BB: map current buffer level to a discrete bitrate using a reservoir-cushion rule that ramps from the lowest to the highest quality as the buffer fills}",
         "code": BB_CODE,
     },
     {
-        "algorithm": "{BOLA: maximize utility+buffer tradeoff per chunk size}",
+        "algorithm": "{BOLA: score each bitrate by balancing logarithmic bitrate utility against current buffer occupancy and upcoming chunk size, then pick the maximum score}",
         "code": BOLA_CODE,
     },
     {
-        "algorithm": "{QUETRA: EMA throughput -> rho -> M/D/1/K slack table lookup -> buffer matching}",
+        "algorithm": "{QUETRA: predict throughput with an EMA, convert each bitrate to a queue-load slack target through the M/D/1/K table, and choose the bitrate whose target buffer best matches the current buffer}",
         "code": QUETRA_CODE,
     },
     {
-        "algorithm": "{RobustMPC: SABR-style robust bandwidth prediction + exact horizon search}",
+        "algorithm": "{RobustMPC: estimate conservative future bandwidth from harmonic-mean throughput and recent prediction error, then exhaustively evaluate short bitrate sequences with a bitrate-minus-rebuffer-minus-switching objective and return the first action of the best sequence}",
         "code": ROBUST_MPC_CODE,
     },
     {
-        "algorithm": "{Rate-based: choose highest bitrate within predicted bandwidth margin}",
+        "algorithm": "{Rate-based: use a conservative harmonic-mean bandwidth estimate and strongly penalize bitrates above that budget so the best score stays near the highest sustainable quality}",
         "code": RATE_BASED_CODE,
     },
 ]
