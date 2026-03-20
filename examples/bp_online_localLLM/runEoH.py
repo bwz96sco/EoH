@@ -12,7 +12,8 @@ paras.set_paras(method = "eoh",    # ['ael','eoh']
                 ec_pop_size = 4, # number of samples in each population
                 ec_n_pop = 4,  # number of populations
                 exp_n_proc = 4,  # multi-core parallel
-                exp_debug_mode = False)
+                exp_debug_mode = False,
+                exp_output_path = "./results/")
 
 # initilization
 evolution = eoh.EVOL(paras)

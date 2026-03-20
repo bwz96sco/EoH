@@ -19,9 +19,8 @@ paras.set_paras(method = "eoh",    # ['ael','eoh']
                 exp_n_proc = 4,  # multi-core parallel
                 exp_debug_mode = False,
                 eva_numba_decorator = False,
-                eva_timeout = 120  
-                # Set the maximum evaluation time for each heuristic !
-                # increase it if more instances are used for evaluation !
+                eva_timeout = 120,
+                exp_output_path = "./results/"
                 ) 
 
 # initilization

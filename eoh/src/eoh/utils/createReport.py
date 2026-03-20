@@ -2,6 +2,7 @@ from docx import Document
 from docx.shared import Inches
 import numpy as np
 import json
+import os
 import matplotlib.pyplot as plt
 from docx.shared import RGBColor, Pt
 from docx.oxml import OxmlElement
@@ -21,7 +22,7 @@ class ReportCreator():
         for i in range(n_start,n_start+self.ec_n_pop):
             ### Get result ###
             #Load JSON data from file
-            with open(self.exp_output_path+"ael_results/pops/population_generation_"+str(i)+".json") as file:
+            with open(os.path.join(self.exp_output_path, "results", "pops", f"population_generation_{i}.json")) as file:
                     data = json.load(file)
 
 
@@ -76,13 +77,13 @@ class ReportCreator():
 
         # Show the plot
         plt.tight_layout()
-        plt.savefig(self.exp_output_path+'ael_results/ael_convergence.png')   # Save the plot as a file
-        plt.savefig(self.exp_output_path+'ael_results/ael_convergence.pdf') 
+        plt.savefig(os.path.join(self.exp_output_path, 'results', 'convergence.png'))
+        plt.savefig(os.path.join(self.exp_output_path, 'results', 'convergence.pdf'))
         #plt.show()
     
     def get_final_algorithms(self):
         ### Get result ###
-        with open(self.exp_output_path+"ael_results/pops/population_generation_"+str(self.ec_n_pop)+".json") as file:
+        with open(os.path.join(self.exp_output_path, "results", "pops", f"population_generation_{self.ec_n_pop}.json")) as file:
             data = json.load(file)
 
         # for individual in data:
@@ -145,7 +146,7 @@ class ReportCreator():
         # Add Convergence Process
         doc.add_heading('Convergence Process', level=2)
         self.create_convergence()
-        doc.add_picture(self.exp_output_path+'ael_results/ael_convergence.png', width=Inches(4))
+        doc.add_picture(os.path.join(self.exp_output_path, 'results', 'convergence.png'), width=Inches(4))
 
         # Add Final Results
         doc.add_heading('Final Results', level=2)
@@ -178,7 +179,7 @@ class ReportCreator():
             doc.add_paragraph('')  # Add a blank paragraph for separation
 
         # Save the document
-        doc.save('ael_report.docx')
+        doc.save(os.path.join(self.exp_output_path, 'report.docx'))
 
 
 

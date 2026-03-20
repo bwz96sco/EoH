@@ -18,10 +18,11 @@ paras.set_paras(method = "eoh",    # ['ael','eoh']
                 ec_pop_size = 1 if debug_single_proc else 4, # smaller for debugging
                 ec_n_pop = 1 if debug_single_proc else 4,  # smaller for debugging
                 exp_n_proc = 1 if debug_single_proc else 4,  # single process for debugging
-                exp_debug_mode = debug_single_proc)
+                exp_debug_mode = debug_single_proc,
+                exp_output_path = "./results/")
 
 # initilization
 evolution = eoh.EVOL(paras)
 
-# run 
+# run
 evolution.run()

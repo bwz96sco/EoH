@@ -17,7 +17,7 @@ class Paras():
         self.ec_operators = None # evolution operators: ['e1','e2','m1','m2'], default =  ['e1','e2','m1','m2']
         self.ec_m = 2  # number of parents for 'e1' and 'e2' operators, default = 2
         self.ec_operator_weights = None  # weights for operators, i.e., the probability of use the operator in each iteration, default = [1,1,1,1]
-        
+
         #####################
         ### LLM settings  ###
         #####################
@@ -31,7 +31,8 @@ class Paras():
         ###  Exp settings  ###
         #####################
         self.exp_debug_mode = False  # if debug
-        self.exp_output_path = "./"  # default folder for ael outputs
+        self.exp_output_path = "./results/"  # base folder for outputs
+        self.exp_name = None  # experiment name; auto-generated if None
         self.exp_use_seed = False
         self.exp_seed_path = "./seeds/seeds.json"
         self.exp_use_continue = False
@@ -88,6 +89,17 @@ class Paras():
             self.exp_n_proc = 1
             print("> single-point-based, set pop size to 1. ")
             
+    def _set_experiment_path(self):
+        import os
+        from datetime import datetime
+        if self.exp_name is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            problem_name = self.problem if isinstance(self.problem, str) else type(self.problem).__name__
+            self.exp_name = f"{self.method}_{problem_name}_{timestamp}"
+        self.exp_output_path = os.path.join(self.exp_output_path, self.exp_name)
+        os.makedirs(self.exp_output_path, exist_ok=True)
+        print(f"- Experiment output: {os.path.abspath(self.exp_output_path)}")
+
     def set_evaluation(self):
         # Initialize evaluation settings
         if self.problem == 'bp_online':
@@ -97,20 +109,23 @@ class Paras():
             self.eva_timeout = 20
                 
     def set_paras(self, *args, **kwargs):
-        
+
         # Map paras
         for key, value in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
-              
-        # Identify and set parallel 
+
+        # Identify and set parallel
         self.set_parallel()
-        
+
         # Initialize method and ec settings
         self.set_ec()
-        
+
         # Initialize evaluation settings
         self.set_evaluation()
+
+        # Auto-generate unique experiment output path
+        self._set_experiment_path()
 
 
 

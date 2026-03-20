@@ -1,4 +1,6 @@
 
+import json
+import os
 import random
 
 from .utils import createFolders
@@ -17,6 +19,13 @@ class EVOL:
         # Create folder #
         createFolders.create_folders(paras.exp_output_path)
         print("- output folder created -")
+
+        # Save experiment config (exclude sensitive fields)
+        _sensitive = {"llm_api_key", "llm_local_url"}
+        config = {k: v for k, v in vars(paras).items() if k not in _sensitive}
+        config_path = os.path.join(paras.exp_output_path, "config.json")
+        with open(config_path, "w") as f:
+            json.dump(config, f, default=str, indent=2)
 
         self.paras = paras
 

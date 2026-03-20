@@ -18,7 +18,8 @@ paras.set_paras(method = "eoh",    # ['ael','eoh']
                 ec_n_pop = 4,  # number of populations
                 exp_n_proc = 1,  # multi-core parallel
                 exp_debug_mode = False,
-                eva_numba_decorator = False)
+                eva_numba_decorator = False,
+                exp_output_path = "./results/")
 
 # initilization
 evolution = eoh.EVOL(paras)

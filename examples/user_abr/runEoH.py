@@ -63,7 +63,7 @@ def main() -> None:
             eva_timeout=int(os.environ.get("EVA_TIMEOUT", "120")),
             exp_use_seed=True,
             exp_seed_path=str(seed_path),
-            exp_output_path=str(repo_root),
+            exp_output_path="./results/",
             eva_numba_decorator=False,
         )
 
