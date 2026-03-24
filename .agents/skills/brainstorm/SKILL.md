@@ -1,6 +1,6 @@
 ---
 name: brainstorm
-description: "Brainstorm - Requirements Discovery (AI Coding Enhanced)"
+description: "Collaborative requirements discovery session optimized for AI coding workflows. Creates task directories, seeds PRDs, runs codebase research, proposes concrete implementation approaches with trade-offs, and converges on MVP scope through structured Q&A. Use when requirements are unclear, multiple implementation paths exist, trade-offs need evaluation, or a complex feature needs scoping before development."
 ---
 
 # Brainstorm - Requirements Discovery (AI Coding Enhanced)
@@ -392,6 +392,19 @@ Here's my understanding of the complete requirements:
 Does this look correct? If yes, I'll proceed with implementation.
 ```
 
+### Subtask Decomposition (Complex Tasks)
+
+For complex tasks with multiple independent work items, create subtasks:
+
+```bash
+# Create child tasks
+CHILD1=$(python3 ./.trellis/scripts/task.py create "Child task 1" --slug child1 --parent "$TASK_DIR")
+CHILD2=$(python3 ./.trellis/scripts/task.py create "Child task 2" --slug child2 --parent "$TASK_DIR")
+
+# Or link existing tasks
+python3 ./.trellis/scripts/task.py add-subtask "$TASK_DIR" "$CHILD_DIR"
+```
+
 ---
 
 ## PRD Target Structure (final)
@@ -448,27 +461,25 @@ Context / Decision / Consequences
 
 ## Integration with Start Workflow
 
-High-level flow:
+After brainstorm completes (Step 8 confirmation approved), the flow continues to the Task Workflow's **Phase 2: Prepare for Implementation**:
 
 ```text
-User describes task
-↓
-Step 0: Ensure task exists (create if missing)
-↓
-Step 1: Auto-context (inspect repo/docs, research if needed)
-↓
-Step 2: Classify complexity
-↓
-Step 4 (if triggered): Research-first → propose options
-↓
-Step 5: Expansion sweep (diverge)
-↓
-Step 6: Q&A loop (converge; update PRD each turn)
-↓
-Step 8: Final confirmation + small-PR plan
-↓
-Implement
+Brainstorm
+  Step 0: Create task directory + seed PRD
+  Step 1–7: Discover requirements, research, converge
+  Step 8: Final confirmation → user approves
+  ↓
+Task Workflow Phase 2 (Prepare for Implementation)
+  Code-Spec Depth Check (if applicable)
+  → Research codebase (based on confirmed PRD)
+  → Configure code-spec context (jsonl files)
+  → Activate task
+  ↓
+Task Workflow Phase 3 (Execute)
+  Implement → Check → Complete
 ```
+
+The task directory and PRD already exist from brainstorm, so Phase 1 of the Task Workflow is skipped entirely.
 
 ---
 

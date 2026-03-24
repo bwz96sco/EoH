@@ -225,6 +225,74 @@ ctx = {
 }
 ```
 
+## Scenario: Seed Algorithm Description Contract
+
+### 1. Scope / Trigger
+- Trigger: A problem seeds the population with `{"algorithm", "code"}` pairs, or evolution operators feed existing `algorithm` descriptions back into LLM prompts.
+
+### 2. Signatures
+
+```python
+seed = {
+    "algorithm": str,
+    "code": str,
+}
+
+offspring = {
+    "algorithm": str | None,
+    "code": str | None,
+    "objective": float | None,
+    "other_inf": str | None,
+}
+```
+
+### 3. Contracts
+- Treat `algorithm` as prompt scaffolding, not as a decorative label.
+- The description should be one sentence that summarizes the decision backbone:
+  signal used, decision rule, and distinguishing mechanism.
+- Prefer framework-neutral wording when a generic statement is equally accurate.
+- Do not duplicate low-level code details, numeric constants, or long formulas that already appear in `code`.
+- Keep the description consistent with the implementation, because operators such as `e1`, `e2`, `m1`, and `m2` show both the description and code to the LLM.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+|-----------|-------------------|
+| Description is empty or only a name | Prompt quality degrades because the LLM loses the high-level summary |
+| Description is overly long or code-like | Prompt budget is wasted and the summary may conflict with the implementation |
+| Description uses repo-specific names that the model may not know | Prefer a generic mechanism-level rewrite if it stays faithful |
+| Description disagrees with the code | Fix the description immediately; code-description drift is misleading in mutation/crossover prompts |
+
+### 5. Good/Base/Bad Cases
+- Good: `"{Rate-based: use a conservative harmonic-mean bandwidth estimate and penalize bitrates above that budget so the best score stays near the highest sustainable quality}"`
+- Base: `"{Rate-based: choose bitrate from predicted bandwidth}"`
+- Bad: `"{SABR thing with alpha=0.1 and horizon=5 and some arrays and if-statements copied from the code line by line}"`
+
+### 6. Tests Required
+- Prompt inspection: verify parent prompts still show a short mechanism-level summary plus the full code.
+- Drift check: when seed code changes materially, review whether the paired description still matches.
+- Parsability check: keep the description short enough to read cleanly in `e1/e2/m1/m2` prompts.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+{
+    "algorithm": "{RobustMPC: SABR-style thing copied from robust_mpc.cc with horizon=5 and hard-coded details from the source file}",
+    "code": ROBUST_MPC_CODE,
+}
+```
+
+#### Correct
+
+```python
+{
+    "algorithm": "{RobustMPC: estimate conservative future bandwidth from harmonic-mean throughput and recent prediction error, then exhaustively evaluate short bitrate sequences with a bitrate-minus-rebuffer-minus-switching objective and return the first action of the best sequence}",
+    "code": ROBUST_MPC_CODE,
+}
+```
+
 ### Module-as-Strategy Pattern
 
 Selection and management strategies are plain modules with a single function:
