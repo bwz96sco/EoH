@@ -293,6 +293,50 @@ offspring = {
 }
 ```
 
+## Scenario: Remote LLM Transport Contract
+
+### 1. Scope / Trigger
+- Trigger: A remote chat-completion endpoint is used through `eoh/src/eoh/llm/api_general.py`.
+
+### 2. Signatures
+
+```python
+class InterfaceAPI:
+    def __init__(self, api_endpoint, api_key, model_LLM, debug_mode):
+        ...
+
+    def get_response(self, prompt_content):
+        ...
+```
+
+### 3. Contracts
+- `api_endpoint` may be a bare host, `http://host[:port]`, `https://host[:port]`, or a base path ending in `/v1` or `/chat/completions`.
+- Bare hosts default to HTTPS.
+- The request payload must send `"stream": False`, because the client expects one JSON response with `choices[0].message.content`.
+- The request path must normalize as:
+  - bare host or base host -> `/v1/chat/completions`
+  - endpoint ending in `/v1` -> `/v1/chat/completions`
+  - endpoint ending in `/chat/completions` -> use as-is
+- Responses without a `choices` key are retryable API failures, not successful empty replies.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+|-----------|-------------------|
+| `api_endpoint="api.example.com"` | Use `HTTPSConnection("api.example.com")` and path `/v1/chat/completions` |
+| `api_endpoint="http://127.0.0.1:8000"` | Use `HTTPConnection("127.0.0.1:8000")` |
+| Endpoint streams by default | Sending `"stream": False` should force a single JSON completion |
+| Response body only contains `{"error": ...}` | Raise retryable error with keys/body snippet and continue retry loop |
+
+### 5. Good/Base/Bad Cases
+- Good: `LLM_API_ENDPOINT=http://host:8000` for an HTTP reverse proxy that serves OpenAI-compatible chat completions.
+- Base: `LLM_API_ENDPOINT=api.openai.com` for a standard HTTPS provider.
+- Bad: Hardcoding `HTTPSConnection` and assuming every response contains `choices`.
+
+### 6. Tests Required
+- `python3 -m py_compile eoh/src/eoh/llm/api_general.py`
+- One real API smoke check that verifies `get_response("Reply with only: 2")` returns a normal completion on the configured endpoint.
+
 ### Module-as-Strategy Pattern
 
 Selection and management strategies are plain modules with a single function:

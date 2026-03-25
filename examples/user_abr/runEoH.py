@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -35,6 +36,14 @@ def main() -> None:
     )
     paras = Paras()
 
+    # Seed cache: skip expensive seed evaluation if we already have results.
+    cache_dir = Path(__file__).resolve().parent / "seed_cache" / dataset
+    cache_file = cache_dir / "population_generation_0.json"
+    use_cache = cache_file.exists() and not _env_flag("SEED_NO_CACHE")
+
+    if use_cache:
+        print(f"Using cached seed population: {cache_file}")
+
     # Seed population via the built-in `exp_use_seed` mechanism.
     seeds = problem.prompts.get_seed_heuristics()
     with tempfile.NamedTemporaryFile(
@@ -47,7 +56,7 @@ def main() -> None:
         seed_path = Path(seed_file.name)
 
     try:
-        paras.set_paras(
+        paras_kwargs = dict(
             method="eoh",
             problem=problem,
             llm_use_local=_env_flag("LLM_USE_LOCAL", default=False),
@@ -60,18 +69,51 @@ def main() -> None:
             ec_operators=["e1", "e2", "m1", "m2", "m3"],
             exp_n_proc=int(os.environ.get("EXP_N_PROC", "4")),
             exp_debug_mode=_env_flag("EXP_DEBUG_MODE", default=False),
-            eva_timeout=int(os.environ.get("EVA_TIMEOUT", "120")),
-            exp_use_seed=True,
-            exp_seed_path=str(seed_path),
+            eva_timeout=int(os.environ.get("EVA_TIMEOUT", "300")),
             exp_output_path="./results/",
             eva_numba_decorator=False,
         )
 
+        if use_cache:
+            # Load cached seed population, skip seed evaluation entirely.
+            paras_kwargs["exp_use_seed"] = False
+            paras_kwargs["exp_use_continue"] = True
+            paras_kwargs["exp_continue_path"] = str(cache_file)
+            paras_kwargs["exp_continue_id"] = 1  # start from gen 1
+        else:
+            paras_kwargs["exp_use_seed"] = True
+            paras_kwargs["exp_seed_path"] = str(seed_path)
+
+        paras.set_paras(**paras_kwargs)
+
         evolution = eoh.EVOL(paras)
         evolution.run()
+
+        # After first successful run, cache the seed population for future runs.
+        if not use_cache:
+            _cache_seed_population(paras_kwargs["exp_output_path"], cache_dir)
+
     finally:
         if seed_path is not None:
             seed_path.unlink(missing_ok=True)
+
+
+def _cache_seed_population(output_path: str, cache_dir: Path) -> None:
+    """Copy population_generation_0.json to cache for future reuse."""
+    import glob
+
+    # Find the actual output directory (EoH creates a timestamped subfolder)
+    pattern = os.path.join(output_path, "*/results/pops/population_generation_0.json")
+    matches = sorted(glob.glob(pattern))
+    if not matches:
+        print("Warning: could not find population_generation_0.json to cache")
+        return
+
+    src = Path(matches[-1])  # latest run
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    dst = cache_dir / "population_generation_0.json"
+    shutil.copy2(src, dst)
+    print(f"Seed population cached to {dst}")
 
 
 if __name__ == "__main__":

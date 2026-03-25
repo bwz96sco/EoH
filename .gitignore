@@ -10,3 +10,7 @@ output.log
 results/
 test_results/*
 examples/user_abr/seeds.json
+examples/user_abr/seed_cache/
+examples/user_abr/results*/
+.claude/worktrees/
+env/
