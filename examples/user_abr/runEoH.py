@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
@@ -25,10 +26,22 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 def main() -> None:
     repo_root = Path(__file__).resolve().parents[2]
+    experiments_dir = repo_root / "experiments"
+    if str(experiments_dir) not in sys.path:
+        sys.path.insert(0, str(experiments_dir))
+
+    from run_layout import build_eoh_output_root, build_run_layout
+
     seed_path: Path | None = None
 
     dataset = os.environ.get("DATASET", "FCC-18")
+    output_name = os.environ.get("ABR_OUTPUT_NAME", dataset)
+    run_layout = build_run_layout(repo_root)
+    output_root = build_eoh_output_root(repo_root, output_name=output_name, run_id=run_layout.run_id)
+
     print(f"Dataset: {dataset}")
+    print(f"ABR run id: {run_layout.run_id}")
+    print(f"Canonical EoH output root: {output_root}")
 
     problem = ABRProblem(
         trace_split="train",
@@ -70,7 +83,7 @@ def main() -> None:
             exp_n_proc=int(os.environ.get("EXP_N_PROC", "4")),
             exp_debug_mode=_env_flag("EXP_DEBUG_MODE", default=False),
             eva_timeout=int(os.environ.get("EVA_TIMEOUT", "300")),
-            exp_output_path="./results/",
+            exp_output_path=str(output_root),
             eva_numba_decorator=False,
         )
 

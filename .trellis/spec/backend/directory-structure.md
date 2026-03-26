@@ -21,6 +21,7 @@ EoH/
 │   └── src/eoh/            # Installable package source
 ├── examples/               # Ready-to-run example problems
 ├── baseline/               # Baseline implementations (FunSearch)
+├── experiments/            # Canonical experiment workflows and summaries
 ├── scripts/                # Standalone utility scripts
 ├── docs/                   # Documentation and experiment results
 ├── env/                    # External environment files (e.g., SABR)
@@ -151,6 +152,45 @@ examples/<problem>/evaluation/
 └── testingdata/        # Pickle files with test instances
 ```
 
+### ABR Experiment Output Pattern
+
+`examples/user_abr/` uses a canonical experiment run tree instead of writing final outputs directly into `examples/user_abr/` or the repo-root `results/` directory.
+
+```
+experiments/
+├── run_experiment.sh       # Canonical ABR pipeline entry point
+├── collect_results.py      # Summary CSV generation
+├── plot_results.py         # Plot generation
+├── run_layout.py           # Canonical path helpers
+├── update_experiment_tracker.py  # Rebuilds the repo-level run ledger
+├── experiment_index.md     # Generated tracker of canonical runs
+└── results/
+    └── <run-id>/
+```
+
+Per-run outputs live under:
+
+```
+experiments/results/<run-id>/
+├── raw/
+│   └── eoh/
+│       ├── ABRBench-3G/
+│       │   └── eoh_ABRProblem_<timestamp>/
+│       │       ├── config.json
+│       │       └── results/
+│       │           ├── history/
+│       │           ├── pops/
+│       │           └── pops_best/
+│       └── ABRBench-4G+/
+├── analysis/
+│   ├── results_summary.csv
+│   └── plots/
+└── logs/
+```
+
+`examples/user_abr/seed_cache/<dataset>/` is cache-only for seed population reuse and is not part of the canonical result bundle.
+`experiments/experiment_index.md` is the generated cross-run ledger. It summarizes every canonical run currently present under `experiments/results/`.
+
 ---
 
 ## Naming Conventions
@@ -203,5 +243,6 @@ runEoH.py -> EVOL(paras).run()
        -> InterfaceEC                  # Bridges LLM <-> Evaluation
             -> Evolution (LLM prompts) # Generate/mutate heuristics via LLM
             -> problem.evaluate(code)  # Evaluate heuristic fitness
-       -> Results saved to results/pops/*.json per generation
+       -> Results saved under the configured experiment root, e.g.
+          experiments/results/<run-id>/raw/eoh/<name>/eoh_<Problem>_<timestamp>/results/pops/*.json
 ```

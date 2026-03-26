@@ -9,7 +9,7 @@ Produces per-dataset:
 And a summary bar chart across all datasets.
 
 Usage:
-    python plot_results.py [--output-dir ./plots] [--schemes sim_bb,sim_bola,...]
+    python plot_results.py --run-id 20260325-120000 [--schemes sim_bb,sim_bola,...]
 """
 
 from __future__ import annotations
@@ -23,6 +23,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+
+from run_layout import build_plots_dir
 
 # ---------------------------------------------------------------------------
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -272,14 +274,20 @@ def plot_suite_summary(all_means, schemes, output_dir):
 
 def main():
     parser = argparse.ArgumentParser(description="Plot ABR experiment results")
-    parser.add_argument("--output-dir", "-o", default=None,
-                        help="Directory for plots (default: experiments/plots)")
+    parser.add_argument(
+        "--run-id",
+        default=os.environ.get("ABR_RUN_ID"),
+        help="Canonical run id under experiments/results/ (or set ABR_RUN_ID)",
+    )
     parser.add_argument("--schemes", default=None,
                         help="Comma-separated scheme names")
     args = parser.parse_args()
 
+    if not args.run_id:
+        parser.error("--run-id or ABR_RUN_ID is required")
+
     schemes = args.schemes.split(",") if args.schemes else DEFAULT_SCHEMES
-    output_dir = args.output_dir or str(REPO_ROOT / "experiments" / "results" / "plots")
+    output_dir = str(build_plots_dir(REPO_ROOT, run_id=args.run_id))
     os.makedirs(output_dir, exist_ok=True)
 
     all_means = {}

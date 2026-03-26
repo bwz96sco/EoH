@@ -23,6 +23,8 @@ ABR_EXAMPLE_DIR="${REPO_ROOT}/examples/user_abr"
 BRIDGE_SCRIPT="${SABR_DIR}/eval_eoh_in_sabr.py"
 COLLECT_SCRIPT="${REPO_ROOT}/experiments/collect_results.py"
 PLOT_SCRIPT="${REPO_ROOT}/experiments/plot_results.py"
+TRACKER_SCRIPT="${REPO_ROOT}/experiments/update_experiment_tracker.py"
+TRACKER_PATH="${REPO_ROOT}/experiments/experiment_index.md"
 CONFIG_PY="${SABR_DIR}/config.py"
 CONFIG_H="${SABR_DIR}/build_env_c_plus/config.h"
 
@@ -48,6 +50,43 @@ SKIP_PHASE_4="${SKIP_PHASE_4:-0}"
 
 log_info()  { echo ">>> [$(date '+%H:%M:%S')] $*"; }
 log_phase() { echo ""; echo "========== $* =========="; echo ""; }
+
+resolve_run_layout() {
+    local repo_root="$1"
+    python3 - "$repo_root" <<'PY'
+from pathlib import Path
+import os
+import sys
+
+repo_root = Path(sys.argv[1])
+sys.path.insert(0, str(repo_root / "experiments"))
+
+from run_layout import (
+    build_analysis_csv_path,
+    build_log_path,
+    build_plots_dir,
+    build_run_layout,
+    sanitize_component,
+)
+
+layout = build_run_layout(
+    repo_root,
+    run_id=os.environ.get("ABR_RUN_ID"),
+    run_label=os.environ.get("ABR_RUN_LABEL"),
+)
+
+print(layout.run_id)
+print(layout.run_root)
+print(layout.raw_root)
+print(layout.analysis_root)
+print(layout.logs_root)
+print(layout.raw_root / "eoh" / sanitize_component("ABRBench-3G", "eoh"))
+print(layout.raw_root / "eoh" / sanitize_component("ABRBench-4G+", "eoh"))
+print(build_analysis_csv_path(repo_root, run_id=layout.run_id))
+print(build_plots_dir(repo_root, run_id=layout.run_id))
+print(build_log_path(repo_root, log_name="full_pipeline", run_id=layout.run_id))
+PY
+}
 
 cpp_option_for_dataset() {
     case "$1" in
@@ -134,10 +173,9 @@ run_cpp_baselines() {
 }
 
 find_best_population() {
-    # Find the latest (highest generation) population JSON from archived EoH results.
-    # The archived tree mirrors the EoH run folder:
-    #   {archive}/config.json
-    #   {archive}/results/pops_best/population_generation_<N>.json
+    # Find the latest (highest generation) population JSON under a canonical raw
+    # EoH output root:
+    #   {root}/eoh_<Problem>_<timestamp>/results/pops_best/population_generation_<N>.json
     local results_dir="$1"
     if [[ ! -d "$results_dir" ]]; then
         echo ""
@@ -150,6 +188,54 @@ find_best_population() {
         | tail -1 \
         | cut -d' ' -f2-
 }
+
+RUN_LAYOUT_OUTPUT="$(resolve_run_layout "$REPO_ROOT")"
+OLD_IFS="$IFS"
+IFS=$'\n'
+set -- $RUN_LAYOUT_OUTPUT
+IFS="$OLD_IFS"
+
+if [[ "$#" -ne 10 ]]; then
+    echo "Failed to resolve canonical ABR run layout" >&2
+    exit 1
+fi
+
+ABR_RUN_ID="$1"
+RUN_ROOT="$2"
+RAW_ROOT="$3"
+ANALYSIS_ROOT="$4"
+LOGS_ROOT="$5"
+EOH_3G_ROOT="$6"
+EOH_4G_ROOT="$7"
+SUMMARY_CSV="$8"
+PLOTS_DIR="$9"
+PIPELINE_LOG="${10}"
+export ABR_RUN_ID
+
+mkdir -p "$RAW_ROOT" "$ANALYSIS_ROOT" "$LOGS_ROOT"
+exec > >(tee -a "$PIPELINE_LOG") 2>&1
+
+log_info "ABR run id: ${ABR_RUN_ID}"
+log_info "Canonical run root: ${RUN_ROOT}"
+log_info "Raw outputs: ${RAW_ROOT}"
+log_info "Analysis outputs: ${ANALYSIS_ROOT}"
+log_info "Pipeline log: ${PIPELINE_LOG}"
+
+update_experiment_tracker() {
+    local exit_code=$?
+    trap - EXIT
+
+    log_phase "PHASE 5: Experiment Tracker"
+    if (cd "$REPO_ROOT" && python3 "$TRACKER_SCRIPT"); then
+        log_info "Experiment tracker saved to ${TRACKER_PATH}"
+    else
+        log_info "WARNING: experiment tracker update failed"
+    fi
+
+    exit "$exit_code"
+}
+
+trap update_experiment_tracker EXIT
 
 
 # =============================================================================
@@ -164,37 +250,26 @@ if [[ "$SKIP_PHASE_1" != "1" ]]; then
     (
         cd "$ABR_EXAMPLE_DIR"
         DATASET="ABRBench-3G" \
+        ABR_OUTPUT_NAME="ABRBench-3G" \
         EC_N_POP="$EC_N_POP" \
         EXP_N_PROC="$EXP_N_PROC" \
         EVA_TIMEOUT="$EVA_TIMEOUT" \
         uv run python runEoH.py
     )
-    # Copy results to a named directory
-    EOH_3G_RESULTS="${ABR_EXAMPLE_DIR}/results"
-    EOH_3G_ARCHIVE="${REPO_ROOT}/experiments/results/eoh_results_3G"
-    if [[ -d "$EOH_3G_RESULTS" ]]; then
-        rm -rf "$EOH_3G_ARCHIVE"
-        cp -r "$EOH_3G_RESULTS" "$EOH_3G_ARCHIVE"
-        log_info "3G evolution results archived to ${EOH_3G_ARCHIVE}"
-    fi
+    log_info "3G evolution results available under ${EOH_3G_ROOT}"
 
     # --- 4G+ evolution ---
     log_info "Starting EoH evolution on ABRBench-4G+..."
     (
         cd "$ABR_EXAMPLE_DIR"
         DATASET="ABRBench-4G+" \
+        ABR_OUTPUT_NAME="ABRBench-4G+" \
         EC_N_POP="$EC_N_POP" \
         EXP_N_PROC="$EXP_N_PROC" \
         EVA_TIMEOUT="$EVA_TIMEOUT" \
         uv run python runEoH.py
     )
-    EOH_4G_RESULTS="${ABR_EXAMPLE_DIR}/results"
-    EOH_4G_ARCHIVE="${REPO_ROOT}/experiments/results/eoh_results_4G+"
-    if [[ -d "$EOH_4G_RESULTS" ]]; then
-        rm -rf "$EOH_4G_ARCHIVE"
-        cp -r "$EOH_4G_RESULTS" "$EOH_4G_ARCHIVE"
-        log_info "4G+ evolution results archived to ${EOH_4G_ARCHIVE}"
-    fi
+    log_info "4G+ evolution results available under ${EOH_4G_ROOT}"
 else
     log_phase "PHASE 1: SKIPPED (SKIP_PHASE_1=1)"
 fi
@@ -233,10 +308,8 @@ if [[ "$SKIP_PHASE_3" != "1" ]]; then
     log_phase "PHASE 3: EoH Heuristic Evaluation"
 
     # Locate best population files
-    EOH_3G_ARCHIVE="${REPO_ROOT}/experiments/results/eoh_results_3G"
-    EOH_4G_ARCHIVE="${REPO_ROOT}/experiments/results/eoh_results_4G+"
-    BEST_3G_JSON="$(find_best_population "$EOH_3G_ARCHIVE")"
-    BEST_4G_JSON="$(find_best_population "$EOH_4G_ARCHIVE")"
+    BEST_3G_JSON="$(find_best_population "$EOH_3G_ROOT")"
+    BEST_4G_JSON="$(find_best_population "$EOH_4G_ROOT")"
 
     if [[ -z "$BEST_3G_JSON" ]]; then
         log_info "WARNING: No 3G population found — skipping 3G EoH eval"
@@ -273,14 +346,14 @@ if [[ "$SKIP_PHASE_4" != "1" ]]; then
 
     log_info "Collecting results..."
     (cd "$SABR_DIR" && uv run python "$COLLECT_SCRIPT" \
-        --output "${REPO_ROOT}/experiments/results/results_summary.csv")
+        --run-id "$ABR_RUN_ID")
 
     log_info "Generating plots..."
     (cd "$SABR_DIR" && uv run python "$PLOT_SCRIPT" \
-        --output-dir "${REPO_ROOT}/experiments/results/plots")
+        --run-id "$ABR_RUN_ID")
 
-    log_info "Results saved to experiments/results/results_summary.csv"
-    log_info "Plots saved to experiments/results/plots"
+    log_info "Results saved to ${SUMMARY_CSV}"
+    log_info "Plots saved to ${PLOTS_DIR}"
     log_info "Done!"
 else
     log_phase "PHASE 4: SKIPPED (SKIP_PHASE_4=1)"

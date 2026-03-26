@@ -293,6 +293,125 @@ offspring = {
 }
 ```
 
+## Scenario: Canonical ABR Experiment Output Layout
+
+### 1. Scope / Trigger
+- Trigger: Any change to `examples/user_abr/runEoH.py`, `experiments/run_experiment.sh`, or the ABR analysis scripts that write run artifacts.
+
+### 2. Contracts
+- Canonical run root is `experiments/results/<run-id>/`.
+- `run-id` may be caller-provided via `ABR_RUN_ID`, or auto-generated once by the top-level runner.
+- Raw EoH outputs must live under `experiments/results/<run-id>/raw/eoh/<output-name>/...`.
+- Caller-controlled names must be sanitized single path components appended under the canonical root. Do not accept free-form output directories.
+- Analysis outputs must always be written to:
+  - `experiments/results/<run-id>/analysis/results_summary.csv`
+  - `experiments/results/<run-id>/analysis/plots/`
+- Logs must live under `experiments/results/<run-id>/logs/`.
+- `examples/user_abr/seed_cache/<dataset>/` remains cache-only. Do not mix final experiment outputs into `seed_cache`.
+
+### 3. Good/Base/Bad Cases
+- Good: `run_experiment.sh` resolves one `run-id`, exports it, and every downstream step writes under the same canonical tree.
+- Base: direct `runEoH.py` execution auto-generates a timestamped `run-id` and writes raw EoH output under `experiments/results/<run-id>/raw/eoh/<dataset>/`.
+- Bad: `collect_results.py --output /tmp/results.csv` or `plot_results.py --output-dir some/random/path`.
+- Bad: copying outputs back out of the canonical tree into `examples/user_abr/results/`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+|-----------|-------------------|
+| `ABR_RUN_ID` unset for the top-level pipeline | Runner creates a timestamped canonical run directory once and reuses it everywhere |
+| `ABR_RUN_ID` unset for analysis-only scripts | Script fails fast and asks for `--run-id` or `ABR_RUN_ID` |
+| Output name contains `/`, whitespace, or shell metacharacters | Sanitize to a safe single path component before joining under `raw/eoh/` |
+| Script accepts arbitrary output directory input | Reject the design and route through canonical helpers instead |
+
+### 5. Tests Required
+- `python3 -m py_compile examples/user_abr/runEoH.py experiments/collect_results.py experiments/plot_results.py experiments/run_layout.py`
+- `bash -n experiments/run_experiment.sh`
+- Manual dry run: confirm one `run-id` produces `raw/`, `analysis/`, and `logs/` under the same timestamped directory
+
+### 6. Wrong vs Correct
+
+#### Wrong
+
+```python
+parser.add_argument("--output", help="Write anywhere the caller wants")
+```
+
+#### Correct
+
+```python
+parser.add_argument("--run-id", default=os.environ.get("ABR_RUN_ID"))
+output_path = build_analysis_csv_path(REPO_ROOT, run_id=args.run_id)
+```
+
+## Scenario: ABR Experiment Tracker Contract
+
+### 1. Scope / Trigger
+- Trigger: Any change to `experiments/run_experiment.sh`, `experiments/update_experiment_tracker.py`, `experiments/run_layout.py`, or ABR analysis code that affects what a canonical run records.
+
+### 2. Signatures
+
+```bash
+python3 experiments/update_experiment_tracker.py
+python3 experiments/update_experiment_tracker.py --run-id 20260325-234552-abr-rerun
+```
+
+```python
+def build_experiment_tracker_path(repo_root: Path) -> Path:
+    ...
+```
+
+### 3. Contracts
+- Canonical tracker path is `experiments/experiment_index.md`.
+- The tracker is generated from canonical run roots under `experiments/results/<run-id>/`; do not hand-maintain parallel notes elsewhere.
+- Each entry must record, when available:
+  - run id and status
+  - short abstract/scope
+  - models used and key EoH parameters
+  - short result record
+  - paths to canonical artifacts such as run root, summary CSV, plots, report, log, and best heuristic snapshots
+- Partial runs must still appear if they already created a canonical run directory or pipeline log.
+- The top-level ABR workflow must refresh the tracker automatically at the end of the run, including partial/failing runs via an `EXIT`-time update.
+- The tracker summarizes the runs currently present on disk. If old run directories are deleted, their entries disappear on the next rebuild.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+|-----------|-------------------|
+| Completed run has `analysis/results_summary.csv` | Tracker entry status becomes `completed` and includes suite-level short results |
+| Partial run has raw outputs or pipeline log but no summary CSV | Tracker entry status becomes `partial` and lists available artifacts only |
+| `experiments/results/` is empty | Tracker still writes `experiments/experiment_index.md` with an empty-state message |
+| A run reuses shared SABR baselines because phase 2 was skipped | Tracker abstract/phase record should say phase 2 was skipped, so provenance stays explicit |
+| A path in config points to a temp seed file | Tracker should summarize it as generated seed provenance instead of a meaningless temp path dump |
+
+### 5. Good/Base/Bad Cases
+- Good: `run_experiment.sh` updates the tracker automatically on exit, and the tracker is rebuilt from canonical run directories.
+- Base: a manual `python3 experiments/update_experiment_tracker.py` refresh after a direct experiment run.
+- Bad: keeping experiment history only in ad hoc chat logs or hand-edited notes.
+- Bad: recording a run in the tracker while its actual outputs live outside `experiments/results/<run-id>/`.
+
+### 6. Tests Required
+- `python3 -m py_compile experiments/update_experiment_tracker.py experiments/run_layout.py`
+- `bash -n experiments/run_experiment.sh`
+- Manual check: run `python3 experiments/update_experiment_tracker.py` and verify `experiments/experiment_index.md` includes the current canonical run with artifact paths and suite-level short results.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```markdown
+- Keep a private note somewhere about the run.
+- Save some outputs under `results/`, some under `examples/user_abr/`, and manually paste a summary later.
+```
+
+#### Correct
+
+```bash
+ABR_RUN_ID=20260326-abr bash experiments/run_experiment.sh
+# ...
+# EXIT hook refreshes experiments/experiment_index.md from experiments/results/<run-id>/
+```
+
 ## Scenario: Remote LLM Transport Contract
 
 ### 1. Scope / Trigger

@@ -6,7 +6,7 @@ Parses SABR-format log files from each dataset's LOG_FILE_DIR and produces:
   - Per-suite averages (ABRBench-3G, ABRBench-4G+)
 
 Usage:
-    python collect_results.py [--output results.csv] [--schemes sim_bb,sim_bola,...]
+    python collect_results.py --run-id 20260325-120000 [--schemes sim_bb,sim_bola,...]
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ import sys
 from pathlib import Path
 
 import numpy as np
+
+from run_layout import build_analysis_csv_path
 
 # ---------------------------------------------------------------------------
 # Setup imports
@@ -126,13 +128,20 @@ def parse_logs_for_dataset(
 
 def main():
     parser = argparse.ArgumentParser(description="Collect ABR experiment results")
-    parser.add_argument("--output", "-o", default=None,
-                        help="Path to output CSV file")
+    parser.add_argument(
+        "--run-id",
+        default=os.environ.get("ABR_RUN_ID"),
+        help="Canonical run id under experiments/results/ (or set ABR_RUN_ID)",
+    )
     parser.add_argument("--schemes", default=None,
                         help="Comma-separated scheme names (default: all)")
     args = parser.parse_args()
 
+    if not args.run_id:
+        parser.error("--run-id or ABR_RUN_ID is required")
+
     schemes = args.schemes.split(",") if args.schemes else DEFAULT_SCHEMES
+    output_path = build_analysis_csv_path(REPO_ROOT, run_id=args.run_id)
 
     # Header
     header = ["Dataset"] + schemes
@@ -190,15 +199,13 @@ def main():
         print(fmt.format(*row))
     print()
 
-    # Write CSV
-    if args.output:
-        output_path = Path(args.output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(header)
-            writer.writerows(rows)
-        print(f"CSV saved to {output_path}")
+    # Write canonical CSV
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        writer.writerows(rows)
+    print(f"CSV saved to {output_path}")
 
 
 if __name__ == "__main__":
