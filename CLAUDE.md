@@ -107,6 +107,29 @@ When configuring `paras.set_paras()`:
 - `eoh/src/eoh/` - Main EoH framework source code
 - `docs/` - Documentation (minimal, mostly placeholder)
 
+## SABR Dependency (ABR experiments)
+
+The ABR (Adaptive Bitrate) experiments depend on [SABR](https://github.com/luopeng69131/SABR), which lives as a separate repo inside `env/SABR`. It is **not** a submodule — it's `.gitignore`d and must be cloned independently.
+
+**Setup:**
+```bash
+# Clone the SABR fork into env/SABR
+git clone https://github.com/bwz96sco/SABR.git env/SABR
+
+# Build the C++ simulation environment
+cd env/SABR
+bash build.sh
+
+# Create and activate a Python venv for SABR (uses its own dependencies)
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+**Git remotes (for both EoH and SABR):**
+- `origin` — upstream repo (for pulling updates)
+- `myfork` — your fork at `bwz96sco/{EoH,SABR}` (for pushing work)
+
 ## Important Notes
 
 - Always set LLM credentials before running examples
