@@ -8,7 +8,7 @@ set -euo pipefail
 #   1) EoH evolution (ABRBench-3G and ABRBench-4G+)
 #   2) SABR rule-based baselines on each individual dataset
 #   3) EoH heuristic evaluation via bridge script on each dataset
-#   4) Analysis — collect results + plots
+#   4) Analysis — collect results + plots + per-run report
 #
 # Prerequisites:
 #   - SABR cloned and built: env/SABR/ with ABRBench data
@@ -23,6 +23,7 @@ ABR_EXAMPLE_DIR="${REPO_ROOT}/examples/user_abr"
 BRIDGE_SCRIPT="${SABR_DIR}/eval_eoh_in_sabr.py"
 COLLECT_SCRIPT="${REPO_ROOT}/experiments/collect_results.py"
 PLOT_SCRIPT="${REPO_ROOT}/experiments/plot_results.py"
+REPORT_SCRIPT="${REPO_ROOT}/experiments/generate_run_report.py"
 TRACKER_SCRIPT="${REPO_ROOT}/experiments/update_experiment_tracker.py"
 TRACKER_PATH="${REPO_ROOT}/experiments/experiment_index.md"
 CONFIG_PY="${SABR_DIR}/config.py"
@@ -225,7 +226,7 @@ update_experiment_tracker() {
     local exit_code=$?
     trap - EXIT
 
-    log_phase "PHASE 5: Experiment Tracker"
+    log_phase "TRACKER UPDATE"
     if (cd "$REPO_ROOT" && python3 "$TRACKER_SCRIPT"); then
         log_info "Experiment tracker saved to ${TRACKER_PATH}"
     else
@@ -352,8 +353,13 @@ if [[ "$SKIP_PHASE_4" != "1" ]]; then
     (cd "$SABR_DIR" && uv run python "$PLOT_SCRIPT" \
         --run-id "$ABR_RUN_ID")
 
+    log_info "Generating run report..."
+    (cd "$REPO_ROOT" && python3 "$REPORT_SCRIPT" \
+        --run-id "$ABR_RUN_ID")
+
     log_info "Results saved to ${SUMMARY_CSV}"
     log_info "Plots saved to ${PLOTS_DIR}"
+    log_info "Run report saved to ${ANALYSIS_ROOT}/run_report.md"
     log_info "Done!"
 else
     log_phase "PHASE 4: SKIPPED (SKIP_PHASE_4=1)"

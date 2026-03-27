@@ -161,6 +161,7 @@ experiments/
 ├── run_experiment.sh       # Canonical ABR pipeline entry point
 ├── collect_results.py      # Summary CSV generation
 ├── plot_results.py         # Plot generation
+├── generate_run_report.py  # Per-run markdown report generation
 ├── run_layout.py           # Canonical path helpers
 ├── update_experiment_tracker.py  # Rebuilds the repo-level run ledger
 ├── experiment_index.md     # Generated tracker of canonical runs
@@ -184,6 +185,7 @@ experiments/results/<run-id>/
 │       └── ABRBench-4G+/
 ├── analysis/
 │   ├── results_summary.csv
+│   ├── run_report.md
 │   └── plots/
 └── logs/
 ```

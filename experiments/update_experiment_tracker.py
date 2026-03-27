@@ -34,6 +34,12 @@ SUITE_ROWS = ["ABRBench-3G (avg)", "ABRBench-4G+ (avg)", "Overall (avg)"]
 DISPLAY_TARGET_NAMES = {
     "ABRBench-4G": "ABRBench-4G+",
 }
+PHASE_DEFINITIONS = [
+    ("PHASE 1", "Phase 1 (EoH Evolution)"),
+    ("PHASE 2", "Phase 2 (SABR Rule-Based Baselines)"),
+    ("PHASE 3", "Phase 3 (EoH Heuristic Evaluation)"),
+    ("PHASE 4", "Phase 4 (Analysis)"),
+]
 
 
 @dataclass(frozen=True)
@@ -225,7 +231,7 @@ def load_configs(run_root: Path) -> list[EohConfigSummary]:
 
 
 def load_phase_status(log_path: Path | None) -> dict[str, str]:
-    phases = {f"Phase {idx}": "unknown" for idx in range(1, 6)}
+    phases = {display_label: "unknown" for _, display_label in PHASE_DEFINITIONS}
     if log_path is None or not log_path.is_file():
         return phases
 
@@ -234,13 +240,13 @@ def load_phase_status(log_path: Path | None) -> dict[str, str]:
     except Exception:
         return phases
 
-    for idx in range(1, 6):
-        skipped_marker = f"PHASE {idx}: SKIPPED"
-        normal_marker = f"PHASE {idx}:"
+    for raw_label, display_label in PHASE_DEFINITIONS:
+        skipped_marker = f"{raw_label}: SKIPPED"
+        normal_marker = f"{raw_label}:"
         if skipped_marker in content:
-            phases[f"Phase {idx}"] = "skipped"
+            phases[display_label] = "skipped"
         elif normal_marker in content:
-            phases[f"Phase {idx}"] = "ran"
+            phases[display_label] = "ran"
     return phases
 
 
@@ -316,9 +322,10 @@ def build_abstract(scope: list[str], configs: list[EohConfigSummary], phase_stat
     models = sorted({config.model for config in configs if config.model})
     model_text = ", ".join(f"`{model}`" for model in models) if models else "unknown model"
 
-    if phase_status.get("Phase 2") == "skipped":
+    baseline_phase_label = "Phase 2 (SABR Rule-Based Baselines)"
+    if phase_status.get(baseline_phase_label) == "skipped":
         baseline_text = "Baseline phase was skipped, so baseline numbers are reused from existing SABR logs."
-    elif phase_status.get("Phase 2") == "ran":
+    elif phase_status.get(baseline_phase_label) == "ran":
         baseline_text = "Baseline phase ran inside the canonical workflow."
     else:
         baseline_text = "Baseline provenance is unknown from the available artifacts."
@@ -396,8 +403,7 @@ def format_config(config: EohConfigSummary) -> str:
 
 def format_phase_status(phase_status: dict[str, str]) -> list[str]:
     ordered = []
-    for idx in range(1, 6):
-        label = f"Phase {idx}"
+    for _, label in PHASE_DEFINITIONS:
         ordered.append(f"- `{label}`: `{phase_status.get(label, 'unknown')}`")
     return ordered
 

@@ -305,6 +305,7 @@ offspring = {
 - Caller-controlled names must be sanitized single path components appended under the canonical root. Do not accept free-form output directories.
 - Analysis outputs must always be written to:
   - `experiments/results/<run-id>/analysis/results_summary.csv`
+  - `experiments/results/<run-id>/analysis/run_report.md`
   - `experiments/results/<run-id>/analysis/plots/`
 - Logs must live under `experiments/results/<run-id>/logs/`.
 - `examples/user_abr/seed_cache/<dataset>/` remains cache-only. Do not mix final experiment outputs into `seed_cache`.
@@ -325,9 +326,9 @@ offspring = {
 | Script accepts arbitrary output directory input | Reject the design and route through canonical helpers instead |
 
 ### 5. Tests Required
-- `python3 -m py_compile examples/user_abr/runEoH.py experiments/collect_results.py experiments/plot_results.py experiments/run_layout.py`
+- `python3 -m py_compile examples/user_abr/runEoH.py experiments/collect_results.py experiments/plot_results.py experiments/generate_run_report.py experiments/run_layout.py`
 - `bash -n experiments/run_experiment.sh`
-- Manual dry run: confirm one `run-id` produces `raw/`, `analysis/`, and `logs/` under the same timestamped directory
+- Manual dry run: confirm one `run-id` produces `raw/`, `analysis/`, and `logs/` under the same timestamped directory, including `analysis/run_report.md`
 
 ### 6. Wrong vs Correct
 
@@ -342,6 +343,80 @@ parser.add_argument("--output", help="Write anywhere the caller wants")
 ```python
 parser.add_argument("--run-id", default=os.environ.get("ABR_RUN_ID"))
 output_path = build_analysis_csv_path(REPO_ROOT, run_id=args.run_id)
+```
+
+## Scenario: ABR Run Report Contract
+
+### 1. Scope / Trigger
+- Trigger: Any change to `experiments/run_experiment.sh`, `experiments/generate_run_report.py`, `experiments/run_layout.py`, or ABR analysis outputs that affects the per-run human-readable report.
+
+### 2. Signatures
+
+```bash
+python3 experiments/generate_run_report.py --run-id 20260326-145715-grok-4.1-expert
+```
+
+```python
+def build_run_report_path(
+    repo_root: Path,
+    *,
+    run_id: str | None = None,
+    run_label: str | None = None,
+) -> Path:
+    ...
+```
+
+### 3. Contracts
+- Canonical report path is `experiments/results/<run-id>/analysis/run_report.md`.
+- Phase 4 of `experiments/run_experiment.sh` must generate the report after `results_summary.csv` and plots exist.
+- The report is generated from canonical run artifacts; do not hand-maintain or hand-edit it as a parallel source of truth.
+- The report should summarize, when available:
+  - run id, status, abstract, and phase record
+  - canonical artifact locations
+  - models and key EoH parameters
+  - suite-level EoH vs baseline summary
+  - dataset-level highlight bullets
+  - best heuristic snapshot paths
+- If a run is partial, the report may still be generated, but it must clearly say which analysis artifacts are unavailable instead of inventing missing results.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+|-----------|-------------------|
+| Summary CSV exists | Report includes suite-level summary and dataset-level highlights |
+| Summary CSV missing but raw/log artifacts exist | Report still writes, but calls out unavailable analysis sections |
+| `--run-id` missing | Script fails fast and asks for `--run-id` or `ABR_RUN_ID` |
+| Report path already exists | Regeneration overwrites the file from current canonical artifacts |
+
+### 5. Good/Base/Bad Cases
+- Good: phase 4 writes `results_summary.csv`, plots, and `run_report.md` under the same canonical run root.
+- Base: manually backfilling `run_report.md` for an older canonical run with `python3 experiments/generate_run_report.py --run-id ...`.
+- Bad: keeping a manually written markdown summary beside canonical outputs and letting it drift from the actual CSV/plots.
+- Bad: storing the report outside `experiments/results/<run-id>/analysis/`.
+
+### 6. Tests Required
+- `python3 -m py_compile experiments/generate_run_report.py experiments/run_layout.py experiments/update_experiment_tracker.py`
+- `bash -n experiments/run_experiment.sh`
+- Manual check: run `python3 experiments/generate_run_report.py --run-id <run-id>` and verify the file appears at `analysis/run_report.md` and is listed by `experiments/update_experiment_tracker.py`
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```markdown
+- Keep a one-off markdown report only for one experiment because it was useful once.
+- Let later runs have CSVs and plots but no per-run narrative artifact.
+```
+
+#### Correct
+
+```bash
+ABR_RUN_ID=20260327-abr bash experiments/run_experiment.sh
+# ...
+# Phase 4 writes:
+#   analysis/results_summary.csv
+#   analysis/plots/
+#   analysis/run_report.md
 ```
 
 ## Scenario: ABR Experiment Tracker Contract

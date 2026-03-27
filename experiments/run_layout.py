@@ -90,6 +90,16 @@ def build_plots_dir(
     return layout.analysis_root / "plots"
 
 
+def build_run_report_path(
+    repo_root: Path,
+    *,
+    run_id: str | None = None,
+    run_label: str | None = None,
+) -> Path:
+    layout = build_run_layout(repo_root, run_id=run_id, run_label=run_label)
+    return layout.analysis_root / "run_report.md"
+
+
 def build_log_path(
     repo_root: Path,
     *,
