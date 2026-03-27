@@ -69,3 +69,71 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: Finalize ABR Reporting Privacy And Backup Workflow
+
+**Date**: 2026-03-27
+**Task**: Finalize ABR Reporting Privacy And Backup Workflow
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| Area | Description |
+|------|-------------|
+| Run Reports | Added canonical per-run `analysis/run_report.md` generation and updated the report to separate fair online-baseline gaps from oracle/reference `BeamSearch`/`MFD` comparisons. |
+| Privacy | Moved the experiment tracker from tracked `experiments/experiment_index.md` to gitignored `experiments/private/experiment_index.md` so future run metadata is not published by default. |
+| Backup Workflow | Added optional `rclone` backup support to `experiments/run_experiment.sh`, with post-run copy of the canonical run root and private tracker, plus opt-in seed-cache backup. |
+| Local Backup Defaults | Added gitignored `experiments/private/backup.env` support so local OneDrive backup roots can be configured without hardcoding personal remotes into tracked source. |
+
+**Committed Files**:
+- `experiments/generate_run_report.py`
+- `experiments/run_experiment.sh`
+- `experiments/run_layout.py`
+- `experiments/update_experiment_tracker.py`
+- `experiments/.gitignore`
+- `.trellis/spec/backend/directory-structure.md`
+- `.trellis/spec/backend/quality-guidelines.md`
+- removed tracked `experiments/experiment_index.md`
+
+**Operational Outcome**:
+- Current remote backup root is `onedrive_raw:ExperimentsRecord/EoH`
+- Verified remote content exists under:
+  - `experiments/results/`
+  - `experiments/private/`
+  - `examples/user_abr/seed_cache/`
+- Future workflow runs can use the local default backup root from `experiments/private/backup.env`
+
+**Verification**:
+- `python3 -m py_compile experiments/run_layout.py experiments/update_experiment_tracker.py experiments/generate_run_report.py`
+- `bash -n experiments/run_experiment.sh`
+- `python3 experiments/update_experiment_tracker.py`
+- `rclone` remote listings verified under `onedrive_raw:ExperimentsRecord/EoH/...`
+
+**Task Notes**:
+- Archived completed task `03-25-abr-experiment-workflow`
+- Remaining unrelated local state was left untouched: root `.gitignore`, `abcoder-asts/`, `pylsp/`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `37760ac` | (see git log) |
+| `920ef51` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
