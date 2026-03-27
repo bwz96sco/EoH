@@ -25,14 +25,22 @@ COLLECT_SCRIPT="${REPO_ROOT}/experiments/collect_results.py"
 PLOT_SCRIPT="${REPO_ROOT}/experiments/plot_results.py"
 REPORT_SCRIPT="${REPO_ROOT}/experiments/generate_run_report.py"
 TRACKER_SCRIPT="${REPO_ROOT}/experiments/update_experiment_tracker.py"
-TRACKER_PATH="${REPO_ROOT}/experiments/experiment_index.md"
+TRACKER_PATH="${REPO_ROOT}/experiments/private/experiment_index.md"
+BACKUP_CONFIG="${REPO_ROOT}/experiments/private/backup.env"
 CONFIG_PY="${SABR_DIR}/config.py"
 CONFIG_H="${SABR_DIR}/build_env_c_plus/config.h"
+
+if [[ -f "$BACKUP_CONFIG" ]]; then
+    # shellcheck source=/dev/null
+    source "$BACKUP_CONFIG"
+fi
 
 # EoH parameters (override via env vars)
 EC_N_POP="${EC_N_POP:-10}"
 EXP_N_PROC="${EXP_N_PROC:-4}"
 EVA_TIMEOUT="${EVA_TIMEOUT:-120}"
+ABR_BACKUP_REMOTE="${ABR_BACKUP_REMOTE:-${ABR_BACKUP_REMOTE_DEFAULT:-}}"
+ABR_BACKUP_SEED_CACHE="${ABR_BACKUP_SEED_CACHE:-${ABR_BACKUP_SEED_CACHE_DEFAULT:-0}}"
 
 # Dataset groups
 DATASETS_3G=("FCC-16" "FCC-18" "Oboe" "Puffer-21" "Puffer-22" "HSR")
@@ -51,6 +59,48 @@ SKIP_PHASE_4="${SKIP_PHASE_4:-0}"
 
 log_info()  { echo ">>> [$(date '+%H:%M:%S')] $*"; }
 log_phase() { echo ""; echo "========== $* =========="; echo ""; }
+
+backup_path_if_present() {
+    local local_path="$1"
+    local remote_path="$2"
+
+    if [[ ! -e "$local_path" ]]; then
+        log_info "Backup skip: ${local_path} does not exist"
+        return 0
+    fi
+
+    if [[ -d "$local_path" ]]; then
+        log_info "Backing up directory ${local_path} -> ${remote_path}"
+        rclone copy "$local_path" "$remote_path" --progress --create-empty-src-dirs
+        return
+    fi
+
+    log_info "Backing up file ${local_path} -> ${remote_path}"
+    rclone copyto "$local_path" "$remote_path" --progress
+}
+
+backup_run_artifacts() {
+    if [[ -z "$ABR_BACKUP_REMOTE" ]]; then
+        return 0
+    fi
+
+    log_phase "BACKUP"
+
+    if ! command -v rclone >/dev/null 2>&1; then
+        log_info "WARNING: ABR_BACKUP_REMOTE is set but rclone is not installed"
+        return 0
+    fi
+
+    backup_path_if_present "$RUN_ROOT" "${ABR_BACKUP_REMOTE%/}/experiments/results/${ABR_RUN_ID}" || \
+        log_info "WARNING: failed to back up canonical run root"
+    backup_path_if_present "$TRACKER_PATH" "${ABR_BACKUP_REMOTE%/}/experiments/private/experiment_index.md" || \
+        log_info "WARNING: failed to back up private tracker"
+
+    if [[ "$ABR_BACKUP_SEED_CACHE" == "1" ]]; then
+        backup_path_if_present "$ABR_EXAMPLE_DIR/seed_cache" "${ABR_BACKUP_REMOTE%/}/examples/user_abr/seed_cache" || \
+            log_info "WARNING: failed to back up seed cache"
+    fi
+}
 
 resolve_run_layout() {
     local repo_root="$1"
@@ -222,7 +272,7 @@ log_info "Raw outputs: ${RAW_ROOT}"
 log_info "Analysis outputs: ${ANALYSIS_ROOT}"
 log_info "Pipeline log: ${PIPELINE_LOG}"
 
-update_experiment_tracker() {
+finalize_run() {
     local exit_code=$?
     trap - EXIT
 
@@ -233,10 +283,12 @@ update_experiment_tracker() {
         log_info "WARNING: experiment tracker update failed"
     fi
 
+    backup_run_artifacts
+
     exit "$exit_code"
 }
 
-trap update_experiment_tracker EXIT
+trap finalize_run EXIT
 
 
 # =============================================================================

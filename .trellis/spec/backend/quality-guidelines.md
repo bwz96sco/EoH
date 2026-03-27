@@ -374,8 +374,9 @@ def build_run_report_path(
   - run id, status, abstract, and phase record
   - canonical artifact locations
   - models and key EoH parameters
-  - suite-level EoH vs baseline summary
-  - dataset-level highlight bullets
+  - suite-level EoH vs online-baseline summary
+  - suite-level EoH vs overall/reference-baseline summary when oracle-style methods such as `BeamSearch` or `MFD` are present
+  - dataset-level highlight bullets that separate online baseline comparisons from oracle/reference comparisons
   - best heuristic snapshot paths
 - If a run is partial, the report may still be generated, but it must clearly say which analysis artifacts are unavailable instead of inventing missing results.
 
@@ -383,21 +384,24 @@ def build_run_report_path(
 
 | Condition | Expected behavior |
 |-----------|-------------------|
-| Summary CSV exists | Report includes suite-level summary and dataset-level highlights |
+| Summary CSV exists and includes both online and oracle/reference methods | Report includes both fair online-baseline gaps and overall/reference gaps |
+| Summary CSV exists and only includes online methods | Report omits oracle/reference comparison cleanly and still reports online gaps |
 | Summary CSV missing but raw/log artifacts exist | Report still writes, but calls out unavailable analysis sections |
 | `--run-id` missing | Script fails fast and asks for `--run-id` or `ABR_RUN_ID` |
 | Report path already exists | Regeneration overwrites the file from current canonical artifacts |
 
 ### 5. Good/Base/Bad Cases
 - Good: phase 4 writes `results_summary.csv`, plots, and `run_report.md` under the same canonical run root.
+- Good: `run_report.md` makes it explicit when `BeamSearch`/`MFD` are oracle/reference baselines and also reports the best online baseline separately.
 - Base: manually backfilling `run_report.md` for an older canonical run with `python3 experiments/generate_run_report.py --run-id ...`.
 - Bad: keeping a manually written markdown summary beside canonical outputs and letting it drift from the actual CSV/plots.
+- Bad: calling `BeamSearch` the "best baseline" without also telling the reader how far EoH is from the best online method.
 - Bad: storing the report outside `experiments/results/<run-id>/analysis/`.
 
 ### 6. Tests Required
 - `python3 -m py_compile experiments/generate_run_report.py experiments/run_layout.py experiments/update_experiment_tracker.py`
 - `bash -n experiments/run_experiment.sh`
-- Manual check: run `python3 experiments/generate_run_report.py --run-id <run-id>` and verify the file appears at `analysis/run_report.md` and is listed by `experiments/update_experiment_tracker.py`
+- Manual check: run `python3 experiments/generate_run_report.py --run-id <run-id>` and verify the file appears at `analysis/run_report.md`, separates online-vs-reference comparisons, and is listed by `experiments/update_experiment_tracker.py`
 
 ### 7. Wrong vs Correct
 
@@ -419,7 +423,7 @@ ABR_RUN_ID=20260327-abr bash experiments/run_experiment.sh
 #   analysis/run_report.md
 ```
 
-## Scenario: ABR Experiment Tracker Contract
+## Scenario: Private ABR Experiment Tracker Contract
 
 ### 1. Scope / Trigger
 - Trigger: Any change to `experiments/run_experiment.sh`, `experiments/update_experiment_tracker.py`, `experiments/run_layout.py`, or ABR analysis code that affects what a canonical run records.
@@ -437,8 +441,9 @@ def build_experiment_tracker_path(repo_root: Path) -> Path:
 ```
 
 ### 3. Contracts
-- Canonical tracker path is `experiments/experiment_index.md`.
+- Canonical tracker path is `experiments/private/experiment_index.md`.
 - The tracker is generated from canonical run roots under `experiments/results/<run-id>/`; do not hand-maintain parallel notes elsewhere.
+- The tracker directory must be gitignored because it can contain sensitive run metadata, model endpoints, and result summaries.
 - Each entry must record, when available:
   - run id and status
   - short abstract/scope
@@ -455,20 +460,22 @@ def build_experiment_tracker_path(repo_root: Path) -> Path:
 |-----------|-------------------|
 | Completed run has `analysis/results_summary.csv` | Tracker entry status becomes `completed` and includes suite-level short results |
 | Partial run has raw outputs or pipeline log but no summary CSV | Tracker entry status becomes `partial` and lists available artifacts only |
-| `experiments/results/` is empty | Tracker still writes `experiments/experiment_index.md` with an empty-state message |
+| `experiments/results/` is empty | Tracker still writes `experiments/private/experiment_index.md` with an empty-state message |
 | A run reuses shared SABR baselines because phase 2 was skipped | Tracker abstract/phase record should say phase 2 was skipped, so provenance stays explicit |
 | A path in config points to a temp seed file | Tracker should summarize it as generated seed provenance instead of a meaningless temp path dump |
 
 ### 5. Good/Base/Bad Cases
 - Good: `run_experiment.sh` updates the tracker automatically on exit, and the tracker is rebuilt from canonical run directories.
 - Base: a manual `python3 experiments/update_experiment_tracker.py` refresh after a direct experiment run.
+- Good: the tracker lives under a gitignored private directory while public/tracked docs stay free of sensitive run summaries.
 - Bad: keeping experiment history only in ad hoc chat logs or hand-edited notes.
 - Bad: recording a run in the tracker while its actual outputs live outside `experiments/results/<run-id>/`.
+- Bad: storing the tracker in a tracked path such as `experiments/experiment_index.md` if the repo may become public.
 
 ### 6. Tests Required
 - `python3 -m py_compile experiments/update_experiment_tracker.py experiments/run_layout.py`
 - `bash -n experiments/run_experiment.sh`
-- Manual check: run `python3 experiments/update_experiment_tracker.py` and verify `experiments/experiment_index.md` includes the current canonical run with artifact paths and suite-level short results.
+- Manual check: run `python3 experiments/update_experiment_tracker.py` and verify `experiments/private/experiment_index.md` includes the current canonical run with artifact paths and suite-level short results.
 
 ### 7. Wrong vs Correct
 
@@ -484,7 +491,74 @@ def build_experiment_tracker_path(repo_root: Path) -> Path:
 ```bash
 ABR_RUN_ID=20260326-abr bash experiments/run_experiment.sh
 # ...
-# EXIT hook refreshes experiments/experiment_index.md from experiments/results/<run-id>/
+# EXIT hook refreshes experiments/private/experiment_index.md from experiments/results/<run-id>/
+```
+
+## Scenario: ABR Remote Backup Contract
+
+### 1. Scope / Trigger
+- Trigger: Any change to `experiments/run_experiment.sh` or backup behavior for canonical ABR artifacts.
+
+### 2. Signatures
+
+```bash
+ABR_BACKUP_REMOTE=onedrive_raw:EoH-backup bash experiments/run_experiment.sh
+ABR_BACKUP_REMOTE=onedrive_raw:EoH-backup ABR_BACKUP_SEED_CACHE=1 bash experiments/run_experiment.sh
+```
+
+### 3. Contracts
+- Backup is optional and is enabled only when `ABR_BACKUP_REMOTE` is non-empty.
+- The workflow may load local default backup settings from `experiments/private/backup.env`.
+- Personal remote paths should live in that gitignored local config as `ABR_BACKUP_REMOTE_DEFAULT`, not be hardcoded into tracked source.
+- The workflow must refresh the private tracker first, then back up artifacts.
+- The backup remote should preserve repo-relative structure beneath the configured remote root:
+  - `experiments/results/<run-id>/`
+  - `experiments/private/experiment_index.md`
+  - optionally `examples/user_abr/seed_cache/`
+- Default backup mode should be copy-style, not destructive sync, so remote history is not deleted by accident.
+- Seed-cache backup should be opt-in via `ABR_BACKUP_SEED_CACHE=1`, because it can be reused across runs and may be large.
+- Backup failures should warn without overwriting the original experiment exit code by default.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+|-----------|-------------------|
+| `ABR_BACKUP_REMOTE` unset | Workflow skips backup entirely |
+| `ABR_BACKUP_REMOTE` unset but `experiments/private/backup.env` defines `ABR_BACKUP_REMOTE_DEFAULT` | Workflow uses the local default remote root |
+| `ABR_BACKUP_REMOTE` set and `rclone` missing | Workflow warns and continues without backup |
+| Run root exists | Workflow copies `experiments/results/<run-id>/` to the remote mirror path |
+| Private tracker exists | Workflow copies `experiments/private/experiment_index.md` to the remote mirror path |
+| `ABR_BACKUP_SEED_CACHE=1` | Workflow also copies `examples/user_abr/seed_cache/` |
+
+### 5. Good/Base/Bad Cases
+- Good: `ABR_BACKUP_REMOTE=onedrive_raw:EoH-backup` copies the current canonical run and private tracker to OneDrive after tracker refresh.
+- Good: `experiments/private/backup.env` sets `ABR_BACKUP_REMOTE_DEFAULT=onedrive_raw:ExperimentsRecord/EoH`, so the workflow uses the intended remote root without per-run shell flags.
+- Base: a manual `rclone copy` of `experiments/results/` and `experiments/private/` when backfilling older runs.
+- Bad: hardcoding a personal backup remote into tracked source.
+- Bad: using destructive sync as the default backup operation for experiment artifacts.
+
+### 6. Tests Required
+- `python3 -m py_compile experiments/update_experiment_tracker.py experiments/run_layout.py`
+- `bash -n experiments/run_experiment.sh`
+- Manual check: run the workflow with `ABR_BACKUP_REMOTE` set and verify the current run directory and private tracker appear on the remote.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```bash
+# Hardcoded personal remote and destructive default
+rclone sync experiments/results my-personal-remote:
+```
+
+#### Correct
+
+```bash
+ABR_BACKUP_REMOTE=onedrive_raw:EoH-backup bash experiments/run_experiment.sh
+# ...
+# Finalization refreshes the private tracker, then copies:
+#   experiments/results/<run-id>/
+#   experiments/private/experiment_index.md
 ```
 
 ## Scenario: Remote LLM Transport Contract

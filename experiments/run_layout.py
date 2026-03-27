@@ -113,4 +113,4 @@ def build_log_path(
 
 def build_experiment_tracker_path(repo_root: Path) -> Path:
     """Return the canonical experiment tracker path."""
-    return repo_root / "experiments" / "experiment_index.md"
+    return repo_root / "experiments" / "private" / "experiment_index.md"

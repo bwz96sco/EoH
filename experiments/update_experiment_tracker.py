@@ -520,6 +520,7 @@ def main() -> None:
     run_roots = collect_run_roots(args.run_id)
     records = [discover_run_record(run_root) for run_root in run_roots]
     tracker_path = build_experiment_tracker_path(REPO_ROOT)
+    tracker_path.parent.mkdir(parents=True, exist_ok=True)
     tracker_path.write_text(render_tracker(records))
     print(f"Experiment tracker saved to {tracker_path}")
 

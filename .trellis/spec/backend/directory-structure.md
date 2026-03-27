@@ -164,7 +164,9 @@ experiments/
 ├── generate_run_report.py  # Per-run markdown report generation
 ├── run_layout.py           # Canonical path helpers
 ├── update_experiment_tracker.py  # Rebuilds the repo-level run ledger
-├── experiment_index.md     # Generated tracker of canonical runs
+├── private/                # Gitignored private experiment metadata
+│   ├── experiment_index.md # Generated private tracker of canonical runs
+│   └── backup.env          # Optional local backup defaults (untracked)
 └── results/
     └── <run-id>/
 ```
@@ -191,7 +193,9 @@ experiments/results/<run-id>/
 ```
 
 `examples/user_abr/seed_cache/<dataset>/` is cache-only for seed population reuse and is not part of the canonical result bundle.
-`experiments/experiment_index.md` is the generated cross-run ledger. It summarizes every canonical run currently present under `experiments/results/`.
+`experiments/private/experiment_index.md` is the generated private cross-run ledger. It summarizes every canonical run currently present under `experiments/results/` without putting run metadata into tracked source files.
+`experiments/private/backup.env` may define local defaults such as `ABR_BACKUP_REMOTE_DEFAULT` and `ABR_BACKUP_SEED_CACHE_DEFAULT` without committing personal remote paths into the repo.
+If `ABR_BACKUP_REMOTE` is set, or if `experiments/private/backup.env` provides `ABR_BACKUP_REMOTE_DEFAULT`, the workflow mirrors canonical artifacts to an external remote using the same repo-relative layout, for example `.../experiments/results/<run-id>/` and `.../experiments/private/experiment_index.md`.
 
 ---
 
