@@ -24,7 +24,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from run_layout import build_plots_dir
+from run_layout import build_eval_log_dir, build_eval_logs_root, build_plots_dir
 
 # ---------------------------------------------------------------------------
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -72,33 +72,70 @@ SCHEME_COLORS = {
 }
 
 
-def parse_dataset_logs(dataset: str, schemes: list[str]):
+def parse_dataset_logs(
+    dataset: str,
+    schemes: list[str],
+    *,
+    run_id: str,
+):
     """Parse log files for a dataset. Returns {scheme: {trace: [rewards]}}."""
     ds = _DATASET_OPTION.get(dataset)
     if ds is None:
         return {}
 
-    log_dir = ds["LOG_FILE_DIR"]
-    if not os.path.isdir(log_dir):
+    run_local_logs_enabled = build_eval_logs_root(REPO_ROOT, run_id=run_id).is_dir()
+    run_local_log_dir = build_eval_log_dir(REPO_ROOT, dataset=dataset, run_id=run_id)
+    shared_log_dir = Path(ds["LOG_FILE_DIR"])
+
+    raw_rewards = {}
+    for scheme in schemes:
+        raw_rewards[scheme] = _load_scheme_rewards(
+            scheme=scheme,
+            run_local_logs_enabled=run_local_logs_enabled,
+            run_local_log_dir=run_local_log_dir,
+            shared_log_dir=shared_log_dir,
+        )
+
+    return raw_rewards
+
+
+def _load_scheme_rewards(
+    *,
+    scheme: str,
+    run_local_logs_enabled: bool,
+    run_local_log_dir: Path,
+    shared_log_dir: Path,
+) -> dict[str, list[float]]:
+    candidate_dirs: list[Path]
+    if scheme == "sim_eoh":
+        candidate_dirs = [run_local_log_dir] if run_local_logs_enabled else [shared_log_dir]
+    else:
+        candidate_dirs = [shared_log_dir]
+
+    for log_dir in candidate_dirs:
+        rewards = _parse_scheme_logs_from_dir(log_dir, scheme)
+        if rewards:
+            return rewards
+
+    return {}
+
+
+def _parse_scheme_logs_from_dir(log_dir: Path, scheme: str) -> dict[str, list[float]]:
+    if not log_dir.is_dir():
         return {}
 
-    raw_rewards = {s: {} for s in schemes}
-
+    prefix = f"log_{scheme}_"
+    raw_rewards: dict[str, list[float]] = {}
     for log_file in os.listdir(log_dir):
-        full_path = os.path.join(log_dir, log_file)
-        if os.path.isdir(full_path):
+        if not log_file.startswith(prefix):
             continue
 
-        matched = None
-        for scheme in schemes:
-            if scheme in log_file:
-                matched = scheme
-                break
-        if matched is None:
+        full_path = log_dir / log_file
+        if full_path.is_dir():
             continue
 
-        trace_name = log_file[len("log_" + matched + "_"):]
-        rewards = []
+        trace_name = log_file[len(prefix):]
+        rewards: list[float] = []
         try:
             with open(full_path, "r") as f:
                 for line in f:
@@ -110,7 +147,7 @@ def parse_dataset_logs(dataset: str, schemes: list[str]):
             continue
 
         if len(rewards) >= VIDEO_LEN:
-            raw_rewards[matched][trace_name] = rewards
+            raw_rewards[trace_name] = rewards
 
     return raw_rewards
 
@@ -294,7 +331,7 @@ def main():
 
     for dataset in ALL_DATASETS:
         print(f"Processing {dataset}...")
-        raw = parse_dataset_logs(dataset, schemes)
+        raw = parse_dataset_logs(dataset, schemes, run_id=args.run_id)
         per_video = compute_per_video_rewards(raw, schemes)
 
         # Store means

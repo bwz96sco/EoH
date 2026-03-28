@@ -90,6 +90,31 @@ def build_plots_dir(
     return layout.analysis_root / "plots"
 
 
+def build_eval_logs_root(
+    repo_root: Path,
+    *,
+    run_id: str | None = None,
+    run_label: str | None = None,
+) -> Path:
+    layout = build_run_layout(repo_root, run_id=run_id, run_label=run_label)
+    return layout.raw_root / "eval_logs"
+
+
+def build_eval_log_dir(
+    repo_root: Path,
+    *,
+    dataset: str,
+    run_id: str | None = None,
+    run_label: str | None = None,
+) -> Path:
+    eval_logs_root = build_eval_logs_root(
+        repo_root,
+        run_id=run_id,
+        run_label=run_label,
+    )
+    return eval_logs_root / sanitize_component(dataset, "dataset")
+
+
 def build_run_report_path(
     repo_root: Path,
     *,

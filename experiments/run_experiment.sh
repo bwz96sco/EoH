@@ -41,6 +41,7 @@ EXP_N_PROC="${EXP_N_PROC:-4}"
 EVA_TIMEOUT="${EVA_TIMEOUT:-120}"
 ABR_BACKUP_REMOTE="${ABR_BACKUP_REMOTE:-${ABR_BACKUP_REMOTE_DEFAULT:-}}"
 ABR_BACKUP_SEED_CACHE="${ABR_BACKUP_SEED_CACHE:-${ABR_BACKUP_SEED_CACHE_DEFAULT:-0}}"
+ABR_SKIP_TRACKER_UPDATE="${ABR_SKIP_TRACKER_UPDATE:-0}"
 
 # Dataset groups
 DATASETS_3G=("FCC-16" "FCC-18" "Oboe" "Puffer-21" "Puffer-22" "HSR")
@@ -114,6 +115,7 @@ sys.path.insert(0, str(repo_root / "experiments"))
 
 from run_layout import (
     build_analysis_csv_path,
+    build_eval_log_dir,
     build_log_path,
     build_plots_dir,
     build_run_layout,
@@ -136,6 +138,31 @@ print(layout.raw_root / "eoh" / sanitize_component("ABRBench-4G+", "eoh"))
 print(build_analysis_csv_path(repo_root, run_id=layout.run_id))
 print(build_plots_dir(repo_root, run_id=layout.run_id))
 print(build_log_path(repo_root, log_name="full_pipeline", run_id=layout.run_id))
+PY
+}
+
+resolve_eval_log_dir() {
+    local repo_root="$1"
+    local dataset="$2"
+    python3 - "$repo_root" "$dataset" <<'PY'
+from pathlib import Path
+import os
+import sys
+
+repo_root = Path(sys.argv[1])
+dataset = sys.argv[2]
+sys.path.insert(0, str(repo_root / "experiments"))
+
+from run_layout import build_eval_log_dir
+
+print(
+    build_eval_log_dir(
+        repo_root,
+        dataset=dataset,
+        run_id=os.environ.get("ABR_RUN_ID"),
+        run_label=os.environ.get("ABR_RUN_LABEL"),
+    )
+)
 PY
 }
 
@@ -277,7 +304,9 @@ finalize_run() {
     trap - EXIT
 
     log_phase "TRACKER UPDATE"
-    if (cd "$REPO_ROOT" && python3 "$TRACKER_SCRIPT"); then
+    if [[ "$ABR_SKIP_TRACKER_UPDATE" == "1" ]]; then
+        log_info "Skipping tracker update because ABR_SKIP_TRACKER_UPDATE=1"
+    elif (cd "$REPO_ROOT" && python3 "$TRACKER_SCRIPT"); then
         log_info "Experiment tracker saved to ${TRACKER_PATH}"
     else
         log_info "WARNING: experiment tracker update failed"
@@ -370,8 +399,9 @@ if [[ "$SKIP_PHASE_3" != "1" ]]; then
         log_info "Using 3G heuristic: ${BEST_3G_JSON}"
         for ds in "${DATASETS_3G[@]}"; do
             log_info "Evaluating EoH on ${ds}..."
+            EOH_LOG_DIR="$(resolve_eval_log_dir "$REPO_ROOT" "$ds")"
             (cd "$SABR_DIR" && uv run python "$BRIDGE_SCRIPT" \
-                --json "$BEST_3G_JSON" --index 0 --dataset "$ds")
+                --json "$BEST_3G_JSON" --index 0 --dataset "$ds" --log-dir "$EOH_LOG_DIR")
         done
     fi
 
@@ -381,8 +411,9 @@ if [[ "$SKIP_PHASE_3" != "1" ]]; then
         log_info "Using 4G+ heuristic: ${BEST_4G_JSON}"
         for ds in "${DATASETS_4G[@]}"; do
             log_info "Evaluating EoH on ${ds}..."
+            EOH_LOG_DIR="$(resolve_eval_log_dir "$REPO_ROOT" "$ds")"
             (cd "$SABR_DIR" && uv run python "$BRIDGE_SCRIPT" \
-                --json "$BEST_4G_JSON" --index 0 --dataset "$ds")
+                --json "$BEST_4G_JSON" --index 0 --dataset "$ds" --log-dir "$EOH_LOG_DIR")
         done
     fi
 else

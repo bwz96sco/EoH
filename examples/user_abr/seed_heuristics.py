@@ -287,22 +287,27 @@ _ema = _QUETRA_MODULE._ema
 
 SEED_HEURISTICS: Sequence[dict[str, str]] = [
     {
+        "name": "bb",
         "algorithm": "{BB: map current buffer level to a discrete bitrate using a reservoir-cushion rule that ramps from the lowest to the highest quality as the buffer fills}",
         "code": BB_CODE,
     },
     {
+        "name": "bola",
         "algorithm": "{BOLA: score each bitrate by balancing logarithmic bitrate utility against current buffer occupancy and upcoming chunk size, then pick the maximum score}",
         "code": BOLA_CODE,
     },
     {
+        "name": "quetra",
         "algorithm": "{QUETRA: predict throughput with an EMA, convert each bitrate to a queue-load slack target through the M/D/1/K table, and choose the bitrate whose target buffer best matches the current buffer}",
         "code": QUETRA_CODE,
     },
     {
+        "name": "robust_mpc",
         "algorithm": "{RobustMPC: estimate conservative future bandwidth from harmonic-mean throughput and recent prediction error, then exhaustively evaluate short bitrate sequences with a bitrate-minus-rebuffer-minus-switching objective and return the first action of the best sequence}",
         "code": ROBUST_MPC_CODE,
     },
     {
+        "name": "rate_based",
         "algorithm": "{Rate-based: use a conservative harmonic-mean bandwidth estimate and strongly penalize bitrates above that budget so the best score stays near the highest sustainable quality}",
         "code": RATE_BASED_CODE,
     },
@@ -310,5 +315,5 @@ SEED_HEURISTICS: Sequence[dict[str, str]] = [
 
 
 def get_seed_heuristics() -> list[dict[str, str]]:
-    """Return seed heuristics as EoH individuals: [{'algorithm','code'}, ...]."""
-    return list(SEED_HEURISTICS)
+    """Return seed heuristics as EoH individuals."""
+    return [dict(seed) for seed in SEED_HEURISTICS]

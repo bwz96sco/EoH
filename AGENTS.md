@@ -17,6 +17,11 @@ Keep this managed block so 'trellis update' can refresh the instructions.
 
 <!-- TRELLIS:END -->
 
+# ABR Experiment Workflow
+
+For ABR experiment tasks, use the repo-local skill at `.codex/skills/abr-experiment-workflow/SKILL.md`.
+
+Prefer `experiments/run_experiment.sh` for the legacy full mixed pipeline and `experiments/run_eoh_target_experiment.sh` for all EoH-only studies instead of ad hoc direct calls to `examples/user_abr/runEoH.py`. Keep canonical experiment outputs under `experiments/results/<run-id>/...`.
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 

@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-from run_layout import build_analysis_csv_path
+from run_layout import build_analysis_csv_path, build_eval_log_dir, build_eval_logs_root
 
 # ---------------------------------------------------------------------------
 # Setup imports
@@ -54,55 +54,28 @@ SMOOTH_PENALTY = 1
 def parse_logs_for_dataset(
     dataset: str,
     schemes: list[str],
+    *,
+    run_id: str,
 ) -> dict[str, float | None]:
     """Parse all log files for *dataset* and return {scheme: mean_reward}."""
     ds = _DATASET_OPTION.get(dataset)
     if ds is None:
         return {s: None for s in schemes}
 
-    log_dir = ds["LOG_FILE_DIR"]
-    video_bit_rate = ds["VIDEO_BIT_RATE"]
-    rebuf_penalty = ds["REBUF_PENALTY"]
+    run_local_logs_enabled = build_eval_logs_root(REPO_ROOT, run_id=run_id).is_dir()
+    run_local_log_dir = build_eval_log_dir(REPO_ROOT, dataset=dataset, run_id=run_id)
+    shared_log_dir = Path(ds["LOG_FILE_DIR"])
 
-    if not os.path.isdir(log_dir):
-        return {s: None for s in schemes}
+    # Collect per-trace rewards for each scheme, preferring run-local EoH logs.
+    raw_rewards: dict[str, dict[str, list[float]]] = {}
+    for scheme in schemes:
+        raw_rewards[scheme] = _load_scheme_rewards(
+            scheme=scheme,
+            run_local_logs_enabled=run_local_logs_enabled,
+            run_local_log_dir=run_local_log_dir,
+            shared_log_dir=shared_log_dir,
+        )
 
-    log_files = os.listdir(log_dir)
-
-    # Collect per-trace rewards for each scheme
-    raw_rewards: dict[str, dict[str, list[float]]] = {s: {} for s in schemes}
-
-    for log_file in log_files:
-        full_path = os.path.join(log_dir, log_file)
-        if os.path.isdir(full_path):
-            continue
-
-        matched_scheme = None
-        for scheme in schemes:
-            if scheme in log_file:
-                matched_scheme = scheme
-                break
-        if matched_scheme is None:
-            continue
-
-        trace_name = log_file[len("log_" + matched_scheme + "_"):]
-        rewards = []
-
-        try:
-            with open(full_path, "r") as f:
-                for line in f:
-                    parse = line.split()
-                    if len(parse) <= 1:
-                        break
-                    rewards.append(float(parse[-1]))
-        except Exception:
-            continue
-
-        if len(rewards) >= VIDEO_LEN:
-            raw_rewards[matched_scheme][trace_name] = rewards
-
-    # Compute mean per-video reward for each scheme
-    # Only include traces common to ALL schemes that have data
     schemes_with_data = [s for s in schemes if raw_rewards[s]]
 
     if not schemes_with_data:
@@ -120,6 +93,61 @@ def parse_logs_for_dataset(
         results[scheme] = float(np.mean(per_video_rewards)) if per_video_rewards else None
 
     return results
+
+
+def _load_scheme_rewards(
+    *,
+    scheme: str,
+    run_local_logs_enabled: bool,
+    run_local_log_dir: Path,
+    shared_log_dir: Path,
+) -> dict[str, list[float]]:
+    """Load rewards for one scheme, preferring run-local EoH logs when available."""
+    candidate_dirs: list[Path]
+    if scheme == "sim_eoh":
+        candidate_dirs = [run_local_log_dir] if run_local_logs_enabled else [shared_log_dir]
+    else:
+        candidate_dirs = [shared_log_dir]
+
+    for log_dir in candidate_dirs:
+        rewards = _parse_scheme_logs_from_dir(log_dir, scheme)
+        if rewards:
+            return rewards
+
+    return {}
+
+
+def _parse_scheme_logs_from_dir(log_dir: Path, scheme: str) -> dict[str, list[float]]:
+    if not log_dir.is_dir():
+        return {}
+
+    prefix = f"log_{scheme}_"
+    raw_rewards: dict[str, list[float]] = {}
+    for log_file in os.listdir(log_dir):
+        if not log_file.startswith(prefix):
+            continue
+
+        full_path = log_dir / log_file
+        if full_path.is_dir():
+            continue
+
+        trace_name = log_file[len(prefix):]
+        rewards: list[float] = []
+
+        try:
+            with open(full_path, "r") as f:
+                for line in f:
+                    parse = line.split()
+                    if len(parse) <= 1:
+                        break
+                    rewards.append(float(parse[-1]))
+        except Exception:
+            continue
+
+        if len(rewards) >= VIDEO_LEN:
+            raw_rewards[trace_name] = rewards
+
+    return raw_rewards
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +181,7 @@ def main():
     }
 
     for dataset in ALL_DATASETS:
-        results = parse_logs_for_dataset(dataset, schemes)
+        results = parse_logs_for_dataset(dataset, schemes, run_id=args.run_id)
         row = [dataset]
         suite = "ABRBench-3G" if dataset in DATASETS_3G else "ABRBench-4G+"
         for scheme in schemes:

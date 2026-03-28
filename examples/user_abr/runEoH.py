@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -17,11 +18,112 @@ from eoh.utils.getParas import Paras
 from prob import ABRProblem
 
 
+_SAFE_COMPONENT_RE = re.compile(r"[^A-Za-z0-9._+\-]+")
+
+
 def _env_flag(name: str, default: bool = False) -> bool:
     value = os.environ.get(name)
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _sanitize_component(value: str | None, default: str) -> str:
+    if not value:
+        return default
+
+    sanitized = _SAFE_COMPONENT_RE.sub("-", value.strip())
+    sanitized = sanitized.strip(".-_+")
+    return sanitized or default
+
+
+def _split_env_list(name: str) -> list[str]:
+    value = os.environ.get(name)
+    if value is None:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _resolve_selected_seeds(
+    seeds: list[dict[str, str]],
+) -> tuple[list[dict[str, str]], str, str]:
+    selected_names = _split_env_list("ABR_SEED_NAME")
+    selected_indices_raw = _split_env_list("ABR_SEED_INDEX")
+
+    if selected_names and selected_indices_raw:
+        raise ValueError("Set only one of ABR_SEED_NAME or ABR_SEED_INDEX.")
+
+    if not selected_names and not selected_indices_raw:
+        return seeds, "all built-in seeds", "all-seeds"
+
+    if selected_names:
+        seeds_by_name = {
+            str(seed.get("name", "")).strip(): dict(seed)
+            for seed in seeds
+            if str(seed.get("name", "")).strip()
+        }
+        selected: list[dict[str, str]] = []
+        resolved_names: list[str] = []
+        seen_names: set[str] = set()
+
+        for raw_name in selected_names:
+            if raw_name not in seeds_by_name:
+                available = ", ".join(sorted(seeds_by_name))
+                raise ValueError(
+                    f"Unknown ABR_SEED_NAME '{raw_name}'. Available seed names: {available}"
+                )
+            if raw_name in seen_names:
+                continue
+            selected.append(dict(seeds_by_name[raw_name]))
+            resolved_names.append(raw_name)
+            seen_names.add(raw_name)
+
+        mode_label = f"seed name(s): {', '.join(resolved_names)}"
+        mode_slug = "name-" + "-".join(
+            _sanitize_component(name, "seed") for name in resolved_names
+        )
+        return selected, mode_label, mode_slug
+
+    selected: list[dict[str, str]] = []
+    resolved_indices: list[int] = []
+    seen_indices: set[int] = set()
+
+    for raw_index in selected_indices_raw:
+        try:
+            index = int(raw_index)
+        except ValueError as exc:
+            raise ValueError(
+                f"ABR_SEED_INDEX must be an integer, got '{raw_index}'."
+            ) from exc
+
+        if index < 0 or index >= len(seeds):
+            raise ValueError(
+                f"ABR_SEED_INDEX {index} is out of range for {len(seeds)} seeds."
+            )
+        if index in seen_indices:
+            continue
+
+        selected.append(dict(seeds[index]))
+        resolved_indices.append(index)
+        seen_indices.add(index)
+
+    selected_seed_names = [
+        str(seed.get("name", f"seed-{index}"))
+        for index, seed in zip(resolved_indices, selected)
+    ]
+    mode_label = (
+        f"seed index(es): {', '.join(str(index) for index in resolved_indices)} "
+        f"({', '.join(selected_seed_names)})"
+    )
+    mode_slug = "idx-" + "-".join(str(index) for index in resolved_indices)
+    return selected, mode_label, mode_slug
+
+
+def _build_seed_cache_dir(dataset: str, seed_mode_slug: str) -> Path:
+    seed_cache_root = Path(__file__).resolve().parent / "seed_cache"
+    if seed_mode_slug == "all-seeds":
+        return seed_cache_root / dataset
+    return seed_cache_root / dataset / seed_mode_slug
 
 
 def main() -> None:
@@ -49,18 +151,37 @@ def main() -> None:
     )
     paras = Paras()
 
+    all_seeds = [dict(seed) for seed in problem.prompts.get_seed_heuristics()]
+    seeds, seed_mode_label, seed_mode_slug = _resolve_selected_seeds(all_seeds)
+    selected_seed_names = [
+        str(seed.get("name", f"seed-{index}")) for index, seed in enumerate(seeds)
+    ]
+
     # Seed cache: skip expensive seed evaluation if we already have results.
-    cache_dir = Path(__file__).resolve().parent / "seed_cache" / dataset
+    cache_dir = _build_seed_cache_dir(dataset, seed_mode_slug)
     cache_file = cache_dir / "population_generation_0.json"
     use_cache = cache_file.exists() and not _env_flag("SEED_NO_CACHE")
+
+    print(f"Seed mode: {seed_mode_label}")
+    print(f"Selected seed names: {', '.join(selected_seed_names)}")
+    print(f"Seed cache directory: {cache_dir}")
 
     if use_cache:
         print(f"Using cached seed population: {cache_file}")
 
     # Seed population via the built-in `exp_use_seed` mechanism.
-    seeds = problem.prompts.get_seed_heuristics()
+    temp_seed_dir = (
+        Path(__file__).resolve().parent
+        / "seed_cache"
+        / "_seed_specs"
+        / dataset
+        / seed_mode_slug
+    )
+    temp_seed_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         mode="w",
+        dir=temp_seed_dir,
+        prefix="selected-",
         suffix="-user-abr-seeds.json",
         encoding="utf-8",
         delete=False,
