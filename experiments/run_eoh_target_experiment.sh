@@ -46,6 +46,7 @@ EXP_N_PROC="${EXP_N_PROC:-4}"
 EVA_TIMEOUT="${EVA_TIMEOUT:-120}"
 ABR_BACKUP_REMOTE="${ABR_BACKUP_REMOTE:-${ABR_BACKUP_REMOTE_DEFAULT:-}}"
 ABR_BACKUP_SEED_CACHE="${ABR_BACKUP_SEED_CACHE:-${ABR_BACKUP_SEED_CACHE_DEFAULT:-0}}"
+ABR_RECORD_EXPERIMENT="${ABR_RECORD_EXPERIMENT:-1}"
 
 SKIP_PHASE_1="${SKIP_PHASE_1:-0}"
 SKIP_PHASE_3="${SKIP_PHASE_3:-0}"
@@ -108,8 +109,34 @@ backup_path_if_present() {
     rclone copyto "$local_path" "$remote_path" --progress
 }
 
+should_backup_run_artifacts() {
+    local run_name
+    run_name="$(basename "$RUN_ROOT")"
+
+    if [[ "$ABR_RECORD_EXPERIMENT" != "1" ]]; then
+        log_info "Backup skip: ABR_RECORD_EXPERIMENT=${ABR_RECORD_EXPERIMENT}"
+        return 1
+    fi
+
+    if [[ "$SKIP_PHASE_3" == "1" || "$SKIP_PHASE_4" == "1" ]]; then
+        log_info "Backup skip: partial run (SKIP_PHASE_3=${SKIP_PHASE_3}, SKIP_PHASE_4=${SKIP_PHASE_4})"
+        return 1
+    fi
+
+    if printf '%s\n' "$run_name" | tr '[:upper:]' '[:lower:]' | grep -Eq '(^|[-_])(smoke|probe)([-_]|$)'; then
+        log_info "Backup skip: non-canonical smoke/probe run (${run_name})"
+        return 1
+    fi
+
+    return 0
+}
+
 backup_run_artifacts() {
     if [[ -z "$ABR_BACKUP_REMOTE" ]]; then
+        return 0
+    fi
+
+    if ! should_backup_run_artifacts; then
         return 0
     fi
 

@@ -33,6 +33,7 @@ There are three supported runners:
 - `ABR_RUN_LABEL`: label suffix used when `ABR_RUN_ID` is unset.
 - `EC_N_POP`, `EXP_N_PROC`, `EVA_TIMEOUT`: evolution settings.
 - `ABR_SKIP_TRACKER_UPDATE=1`: skip tracker refresh in this process.
+- `ABR_RECORD_EXPERIMENT=0`: do not back up the run to the canonical remote archive.
 
 ### Single target
 
@@ -119,6 +120,13 @@ python3 experiments/update_experiment_tracker.py
 4. For dataset-impact or seed-impact studies, either build an explicit run matrix over `run_eoh_target_experiment.sh` or use `run_full_impact_wave.sh` for the standard combined wave.
 5. If running multiple EoH-only jobs in parallel, keep tracker refresh off during the wave and refresh once at the end.
 6. After completion, report the run ids and relevant paths under `experiments/results/`.
+
+## Backup Rule
+
+- Canonical remote backup is for completed experiment records only.
+- Partial runs with `SKIP_PHASE_3=1` or `SKIP_PHASE_4=1` do not back up automatically.
+- Runs whose canonical run id includes `smoke` or `probe` do not back up automatically.
+- For any other ad hoc or debug run, set `ABR_RECORD_EXPERIMENT=0`.
 
 ## Explicit Run Matrices
 
