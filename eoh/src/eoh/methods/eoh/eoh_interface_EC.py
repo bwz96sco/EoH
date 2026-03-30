@@ -57,6 +57,9 @@ class InterfaceEC():
         self.timeout_diagnostics_enabled = bool(kwargs.get("timeout_diagnostics_enabled", False))
         self.timeout_diagnostics_path = kwargs.get("timeout_diagnostics_path")
         self.run_id = kwargs.get("run_id")
+        evolution_kwargs = dict(kwargs)
+        evolution_kwargs["llm_request_timeout_s"] = self.llm_request_timeout_s
+        evolution_kwargs["llm_total_timeout_s"] = self.llm_total_timeout_s
         self.evol = Evolution(
             api_endpoint,
             api_key,
@@ -65,9 +68,7 @@ class InterfaceEC():
             llm_local_url,
             debug_mode,
             prompts,
-            llm_request_timeout_s=self.llm_request_timeout_s,
-            llm_total_timeout_s=self.llm_total_timeout_s,
-            **kwargs,
+            **evolution_kwargs,
         )
         self.m = m
         self.debug = debug_mode
