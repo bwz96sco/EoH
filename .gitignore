@@ -14,3 +14,4 @@ examples/user_abr/seed_cache/
 examples/user_abr/results*/
 .claude/worktrees/
 env/
+.gitnexus
