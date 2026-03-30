@@ -21,6 +21,7 @@ RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{4})(?P<month>\d{2})(?P<day>\d{2}
 POPULATION_GENERATION_RE = re.compile(r"population_generation_(\d+)\.json$")
 
 BASELINE_SCHEMES = ["sim_bb", "sim_bola", "sim_quetra", "sim_rmpc", "sim_bs", "sim_mfd"]
+ONLINE_SCHEMES = ["sim_bb", "sim_bola", "sim_quetra", "sim_rmpc"]
 SCHEME_LABELS = {
     "sim_bb": "BB",
     "sim_bola": "BOLA",
@@ -70,8 +71,10 @@ class EohConfigSummary:
 class SuiteSummary:
     row_name: str
     eoh_value: float | None
-    best_baseline_label: str | None
-    best_baseline_value: float | None
+    best_online_label: str | None
+    best_online_value: float | None
+    best_overall_label: str | None
+    best_overall_value: float | None
 
 
 @dataclass(frozen=True)
@@ -263,6 +266,35 @@ def parse_float(value: str | None) -> float | None:
         return None
 
 
+def select_best_baseline(
+    row: dict[str, str],
+    schemes: list[str],
+) -> tuple[str | None, float | None]:
+    best_label = None
+    best_value = None
+    for scheme in schemes:
+        value = parse_float(row.get(scheme))
+        if value is None:
+            continue
+        if best_value is None or value > best_value:
+            best_value = value
+            best_label = SCHEME_LABELS[scheme]
+    return best_label, best_value
+
+
+def build_suite_summary(row_name: str, row: dict[str, str]) -> SuiteSummary:
+    best_online_label, best_online_value = select_best_baseline(row, ONLINE_SCHEMES)
+    best_overall_label, best_overall_value = select_best_baseline(row, BASELINE_SCHEMES)
+    return SuiteSummary(
+        row_name=row_name,
+        eoh_value=parse_float(row.get("sim_eoh")),
+        best_online_label=best_online_label,
+        best_online_value=best_online_value,
+        best_overall_label=best_overall_label,
+        best_overall_value=best_overall_value,
+    )
+
+
 def load_suite_summaries(summary_csv: Path | None) -> list[SuiteSummary]:
     if summary_csv is None or not summary_csv.is_file():
         return []
@@ -281,24 +313,7 @@ def load_suite_summaries(summary_csv: Path | None) -> list[SuiteSummary]:
         if row is None:
             continue
 
-        best_label = None
-        best_value = None
-        for scheme in BASELINE_SCHEMES:
-            value = parse_float(row.get(scheme))
-            if value is None:
-                continue
-            if best_value is None or value > best_value:
-                best_value = value
-                best_label = SCHEME_LABELS[scheme]
-
-        summaries.append(
-            SuiteSummary(
-                row_name=row_name,
-                eoh_value=parse_float(row.get("sim_eoh")),
-                best_baseline_label=best_label,
-                best_baseline_value=best_value,
-            )
-        )
+        summaries.append(build_suite_summary(row_name, row))
     return summaries
 
 
@@ -316,22 +331,7 @@ def load_summary_rows(summary_csv: Path | None) -> dict[str, SuiteSummary]:
 
     summaries: dict[str, SuiteSummary] = {}
     for row_name, row in rows.items():
-        best_label = None
-        best_value = None
-        for scheme in BASELINE_SCHEMES:
-            value = parse_float(row.get(scheme))
-            if value is None:
-                continue
-            if best_value is None or value > best_value:
-                best_value = value
-                best_label = SCHEME_LABELS[scheme]
-
-        summaries[row_name] = SuiteSummary(
-            row_name=row_name,
-            eoh_value=parse_float(row.get("sim_eoh")),
-            best_baseline_label=best_label,
-            best_baseline_value=best_value,
-        )
+        summaries[row_name] = build_suite_summary(row_name, row)
     return summaries
 
 
@@ -445,13 +445,17 @@ def format_suite_summary(summary: SuiteSummary) -> str:
     if summary.eoh_value is None:
         return f"- `{summary.row_name}`: EoH result unavailable"
 
-    if summary.best_baseline_label is None or summary.best_baseline_value is None:
-        return f"- `{summary.row_name}`: `EoH = {summary.eoh_value:.4f}`"
+    parts = [f"`EoH = {summary.eoh_value:.4f}`"]
+    if summary.best_online_label is not None and summary.best_online_value is not None:
+        parts.append(
+            f"best online `{summary.best_online_label} = {summary.best_online_value:.4f}`"
+        )
+    if summary.best_overall_label is not None and summary.best_overall_value is not None:
+        parts.append(
+            f"best overall `{summary.best_overall_label} = {summary.best_overall_value:.4f}`"
+        )
 
-    return (
-        f"- `{summary.row_name}`: `EoH = {summary.eoh_value:.4f}`, "
-        f"best baseline `{summary.best_baseline_label} = {summary.best_baseline_value:.4f}`"
-    )
+    return f"- `{summary.row_name}`: " + ", ".join(parts)
 
 
 def format_config(config: EohConfigSummary) -> str:
@@ -491,12 +495,16 @@ def build_table_row(record: RunRecord) -> str:
             continue
 
         label = summary.row_name.removesuffix(" (avg)")
-        if summary.best_baseline_label and summary.best_baseline_value is not None:
-            result_parts.append(
-                f"{label}: EoH {summary.eoh_value:.1f} vs {summary.best_baseline_label} {summary.best_baseline_value:.1f}"
+        summary_parts = [f"{label}: EoH {summary.eoh_value:.1f}"]
+        if summary.best_online_label and summary.best_online_value is not None:
+            summary_parts.append(
+                f"online {summary.best_online_label} {summary.best_online_value:.1f}"
             )
-        else:
-            result_parts.append(f"{label}: EoH {summary.eoh_value:.1f}")
+        if summary.best_overall_label and summary.best_overall_value is not None:
+            summary_parts.append(
+                f"overall {summary.best_overall_label} {summary.best_overall_value:.1f}"
+            )
+        result_parts.append(" vs ".join(summary_parts))
 
     result = "; ".join(result_parts) if result_parts else "analysis pending"
     return f"| `{record.run_id}` | `{record.status}` | {models} | {scope} | {result} |"
@@ -513,7 +521,7 @@ def render_tracker(records: list[RunRecord]) -> str:
         "",
         "## Summary Table",
         "",
-        "| Run ID | Status | Models | Scope | Primary Comparison |",
+        "| Run ID | Status | Models | Scope | Primary Comparison (Online / Overall) |",
         "| --- | --- | --- | --- | --- |",
     ]
 
@@ -581,10 +589,10 @@ def collect_run_roots(selected_run_ids: list[str]) -> list[Path]:
 
     if selected_run_ids:
         run_roots = [RESULTS_ROOT / run_id for run_id in selected_run_ids]
-        return [run_root for run_root in run_roots if run_root.is_dir()]
+        return [run_root for run_root in run_roots if run_root.is_dir() and not run_root.name.startswith("_")]
 
     return sorted(
-        (path for path in RESULTS_ROOT.iterdir() if path.is_dir()),
+        (path for path in RESULTS_ROOT.iterdir() if path.is_dir() and not path.name.startswith("_")),
         key=lambda path: path.name,
         reverse=True,
     )
