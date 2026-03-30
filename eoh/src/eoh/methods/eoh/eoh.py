@@ -55,6 +55,11 @@ class EOH:
         self.exp_n_proc = paras.exp_n_proc
         
         self.timeout = paras.eva_timeout
+        self.llm_request_timeout_s = paras.llm_request_timeout_s
+        self.llm_total_timeout_s = paras.llm_total_timeout_s
+        self.timeout_diagnostics_enabled = paras.exp_timeout_diagnostics
+        self.timeout_diagnostics_path = paras.exp_timeout_diagnostics_path
+        self.run_id = paras.abr_run_id
 
         self.use_numba = paras.eva_numba_decorator
 
@@ -89,7 +94,12 @@ class EOH:
         # interface for ec operators
         interface_ec = InterfaceEC(self.pop_size, self.m, self.api_endpoint, self.api_key, self.llm_model, self.use_local_llm, self.llm_local_url,
                                    self.debug_mode, interface_prob, select=self.select,n_p=self.exp_n_proc,
-                                   timeout = self.timeout, use_numba=self.use_numba
+                                   timeout = self.timeout, use_numba=self.use_numba,
+                                   llm_request_timeout_s=self.llm_request_timeout_s,
+                                   llm_total_timeout_s=self.llm_total_timeout_s,
+                                   timeout_diagnostics_enabled=self.timeout_diagnostics_enabled,
+                                   timeout_diagnostics_path=self.timeout_diagnostics_path,
+                                   run_id=self.run_id,
                                    )
 
         # initialization
@@ -148,7 +158,7 @@ class EOH:
                 print(f" OP: {op}, [{i + 1} / {n_op}] ", end="|") 
                 op_w = self.operator_weights[i]
                 if (np.random.rand() < op_w):
-                    parents, offsprings = interface_ec.get_algorithm(population, op)
+                    parents, offsprings = interface_ec.get_algorithm(population, op, generation=pop + 1)
                 self.add2pop(population, offsprings)  # Check duplication, and add the new offspring
                 for off in offsprings:
                     print(" Obj: ", off['objective'], end="|")
@@ -183,3 +193,11 @@ class EOH:
                 print(str(population[i]['objective']) + " ", end="")
             print()
 
+        if self.timeout_diagnostics_enabled and self.timeout_diagnostics_path:
+            summary = interface_ec.timeout_summary()
+            print("- Timeout diagnostics summary -")
+            print(
+                " success={success} llm_timeout={llm_timeout} eval_timeout={eval_timeout} "
+                "parse_error={parse_error} worker_budget_timeout={worker_budget_timeout}".format(**summary)
+            )
+            print(f"- Timeout diagnostics log: {self.timeout_diagnostics_path}")

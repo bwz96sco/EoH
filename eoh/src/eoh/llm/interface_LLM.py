@@ -2,13 +2,38 @@ from ..llm.api_general import InterfaceAPI
 from ..llm.api_local_llm import InterfaceLocalLLM
 
 class InterfaceLLM:
-    def __init__(self, api_endpoint, api_key, model_LLM,llm_use_local,llm_local_url, debug_mode):
+    def __init__(
+        self,
+        api_endpoint,
+        api_key,
+        model_LLM,
+        llm_use_local=False,
+        llm_local_url=None,
+        debug_mode=None,
+        request_timeout_s=30,
+        total_timeout_s=90,
+    ):
+        if debug_mode is None:
+            # Backward-compatible 4-arg shape:
+            # InterfaceLLM(api_endpoint, api_key, model, debug_mode)
+            debug_mode = bool(llm_use_local)
+            llm_use_local = False
+            llm_local_url = None
+
         self.api_endpoint = api_endpoint
         self.api_key = api_key
         self.model_LLM = model_LLM
         self.debug_mode = debug_mode
         self.llm_use_local = llm_use_local
         self.llm_local_url = llm_local_url
+        self.request_timeout_s = request_timeout_s
+        self.total_timeout_s = total_timeout_s
+        self.last_request_meta = {
+            "status": "not_started",
+            "attempts": 0,
+            "elapsed_ms": 0.0,
+            "error_type": None,
+        }
 
         print("- check LLM API")
 
@@ -35,10 +60,13 @@ class InterfaceLLM:
                 self.api_key,
                 self.model_LLM,
                 self.debug_mode,
+                request_timeout_s=self.request_timeout_s,
+                total_timeout_s=self.total_timeout_s,
             )
 
             
         res = self.interface_llm.get_response("1+1=?")
+        self.last_request_meta = dict(getattr(self.interface_llm, "last_request_meta", self.last_request_meta))
 
         if res == None:
             print(">> Error in LLM API, wrong endpoint, key, model or local deployment!")
@@ -52,5 +80,6 @@ class InterfaceLLM:
 
     def get_response(self, prompt_content):
         response = self.interface_llm.get_response(prompt_content)
+        self.last_request_meta = dict(getattr(self.interface_llm, "last_request_meta", self.last_request_meta))
 
         return response

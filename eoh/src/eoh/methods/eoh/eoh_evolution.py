@@ -29,9 +29,57 @@ class Evolution():
         self.api_key = api_key
         self.model_LLM = model_LLM
         self.debug_mode = debug_mode # close prompt checking
+        self.llm_total_timeout_s = max(1, int(kwargs.get("llm_total_timeout_s", 90)))
+        self.llm_request_timeout_s = max(1, int(kwargs.get("llm_request_timeout_s", 30)))
+        self.last_generation_meta = {
+            "status": "not_started",
+            "elapsed_ms": 0.0,
+            "prompt_attempts": 0,
+            "api_attempts": 0,
+            "error_type": None,
+        }
 
 
-        self.interface_llm = InterfaceLLM(self.api_endpoint, self.api_key, self.model_LLM,llm_use_local,llm_local_url, self.debug_mode)
+        self.interface_llm = InterfaceLLM(
+            self.api_endpoint,
+            self.api_key,
+            self.model_LLM,
+            llm_use_local,
+            llm_local_url,
+            self.debug_mode,
+            request_timeout_s=self.llm_request_timeout_s,
+            total_timeout_s=self.llm_total_timeout_s,
+        )
+
+    @staticmethod
+    def _extract_algorithm_and_code(response):
+        if not isinstance(response, str):
+            return [], []
+
+        algorithm = re.findall(r"\{(.*)\}", response, re.DOTALL)
+        if len(algorithm) == 0:
+            if 'python' in response:
+                algorithm = re.findall(r'^.*?(?=python)', response,re.DOTALL)
+            elif 'import' in response:
+                algorithm = re.findall(r'^.*?(?=import)', response,re.DOTALL)
+            else:
+                algorithm = re.findall(r'^.*?(?=def)', response,re.DOTALL)
+
+        code = re.findall(r"import.*return", response, re.DOTALL)
+        if len(code) == 0:
+            code = re.findall(r"def.*return", response, re.DOTALL)
+
+        return algorithm, code
+
+    def _set_last_generation_meta(self, **kwargs):
+        self.last_generation_meta = {
+            "status": kwargs.get("status", "unknown"),
+            "elapsed_ms": round(float(kwargs.get("elapsed_ms", 0.0)), 3),
+            "prompt_attempts": int(kwargs.get("prompt_attempts", 0)),
+            "api_attempts": int(kwargs.get("api_attempts", 0)),
+            "error_type": kwargs.get("error_type"),
+            "detail": kwargs.get("detail"),
+        }
 
     def get_prompt_i1(self):
         
@@ -142,53 +190,65 @@ Finally, provide the revised code, keeping the function name, inputs, and output
 
 
     def _get_alg(self,prompt_content):
+        start_time = time.monotonic()
+        prompt_attempts = 0
+        last_error_type = None
 
-        response = self.interface_llm.get_response(prompt_content)
+        while prompt_attempts < 4:
+            elapsed_s = time.monotonic() - start_time
+            if elapsed_s >= self.llm_total_timeout_s:
+                self._set_last_generation_meta(
+                    status="llm_timeout",
+                    elapsed_ms=elapsed_s * 1000,
+                    prompt_attempts=prompt_attempts,
+                    api_attempts=self.interface_llm.last_request_meta.get("attempts", 0),
+                    error_type="TotalPhaseTimeoutExceeded",
+                    detail="LLM phase exceeded total timeout budget before a parseable response was produced.",
+                )
+                raise TimeoutError("LLM phase exceeded total timeout budget.")
 
-        algorithm = re.findall(r"\{(.*)\}", response, re.DOTALL)
-        if len(algorithm) == 0:
-            if 'python' in response:
-                algorithm = re.findall(r'^.*?(?=python)', response,re.DOTALL)
-            elif 'import' in response:
-                algorithm = re.findall(r'^.*?(?=import)', response,re.DOTALL)
-            else:
-                algorithm = re.findall(r'^.*?(?=def)', response,re.DOTALL)
+            prompt_attempts += 1
+            response = self.interface_llm.get_response(prompt_content)
+            llm_meta = dict(getattr(self.interface_llm, "last_request_meta", {}))
+            last_error_type = llm_meta.get("error_type")
+            algorithm, code = self._extract_algorithm_and_code(response)
 
-        code = re.findall(r"import.*return", response, re.DOTALL)
-        if len(code) == 0:
-            code = re.findall(r"def.*return", response, re.DOTALL)
+            if len(algorithm) > 0 and len(code) > 0:
+                self._set_last_generation_meta(
+                    status="success",
+                    elapsed_ms=(time.monotonic() - start_time) * 1000,
+                    prompt_attempts=prompt_attempts,
+                    api_attempts=llm_meta.get("attempts", 0),
+                    error_type=None,
+                    detail=None,
+                )
+                algorithm = algorithm[0]
+                code = code[0]
+                code_all = code+" "+", ".join(s for s in self.prompt_func_outputs) 
+                return [code_all, algorithm]
 
-        n_retry = 1
-        while (len(algorithm) == 0 or len(code) == 0):
             if self.debug_mode:
                 print("Error: algorithm or code not identified, wait 1 seconds and retrying ... ")
 
-            response = self.interface_llm.get_response(prompt_content)
+            status = llm_meta.get("status")
+            if status in {"llm_timeout", "llm_error"} and response is None:
+                last_error_type = llm_meta.get("error_type")
 
-            algorithm = re.findall(r"\{(.*)\}", response, re.DOTALL)
-            if len(algorithm) == 0:
-                if 'python' in response:
-                    algorithm = re.findall(r'^.*?(?=python)', response,re.DOTALL)
-                elif 'import' in response:
-                    algorithm = re.findall(r'^.*?(?=import)', response,re.DOTALL)
-                else:
-                    algorithm = re.findall(r'^.*?(?=def)', response,re.DOTALL)
+        final_status = "parse_error"
+        detail = "LLM response was received but the algorithm or code block could not be parsed."
+        if response is None and last_error_type is not None:
+            final_status = "llm_timeout" if llm_meta.get("status") == "llm_timeout" else "llm_error"
+            detail = "LLM failed before returning a parseable response."
 
-            code = re.findall(r"import.*return", response, re.DOTALL)
-            if len(code) == 0:
-                code = re.findall(r"def.*return", response, re.DOTALL)
-                
-            if n_retry > 3:
-                break
-            n_retry +=1
-
-        algorithm = algorithm[0]
-        code = code[0] 
-
-        code_all = code+" "+", ".join(s for s in self.prompt_func_outputs) 
-
-
-        return [code_all, algorithm]
+        self._set_last_generation_meta(
+            status=final_status,
+            elapsed_ms=(time.monotonic() - start_time) * 1000,
+            prompt_attempts=prompt_attempts,
+            api_attempts=llm_meta.get("attempts", 0),
+            error_type=last_error_type,
+            detail=detail,
+        )
+        raise ValueError(detail)
 
 
     def i1(self):

@@ -132,7 +132,7 @@ def main() -> None:
     if str(experiments_dir) not in sys.path:
         sys.path.insert(0, str(experiments_dir))
 
-    from run_layout import build_eoh_output_root, build_run_layout
+    from run_layout import build_eoh_output_root, build_log_path, build_run_layout
 
     seed_path: Path | None = None
 
@@ -140,6 +140,11 @@ def main() -> None:
     output_name = os.environ.get("ABR_OUTPUT_NAME", dataset)
     run_layout = build_run_layout(repo_root)
     output_root = build_eoh_output_root(repo_root, output_name=output_name, run_id=run_layout.run_id)
+    timeout_diagnostics_path = build_log_path(
+        repo_root,
+        log_name="timeout_diagnostics",
+        run_id=run_layout.run_id,
+    )
 
     print(f"Dataset: {dataset}")
     print(f"ABR run id: {run_layout.run_id}")
@@ -205,6 +210,11 @@ def main() -> None:
             exp_debug_mode=_env_flag("EXP_DEBUG_MODE", default=False),
             eva_timeout=int(os.environ.get("EVA_TIMEOUT", "300")),
             exp_output_path=str(output_root),
+            exp_timeout_diagnostics=_env_flag("EOH_TIMEOUT_DIAGNOSTICS", default=False),
+            exp_timeout_diagnostics_path=str(timeout_diagnostics_path),
+            abr_run_id=run_layout.run_id,
+            llm_request_timeout_s=int(os.environ.get("LLM_REQUEST_TIMEOUT_S", "30")),
+            llm_total_timeout_s=int(os.environ.get("LLM_TOTAL_TIMEOUT_S", "90")),
             eva_numba_decorator=False,
         )
 

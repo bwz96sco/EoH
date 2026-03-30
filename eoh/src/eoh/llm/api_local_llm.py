@@ -1,6 +1,6 @@
 # This file includes classe to get response from deployed local LLM
 import json
-from typing import Collection
+import time
 import requests
 
 
@@ -10,13 +10,34 @@ class InterfaceLocalLLM:
 
     def __init__(self, url):
         self._url = url  # 'http://127.0.0.1:11045/completions'
+        self.last_request_meta = {
+            "status": "not_started",
+            "attempts": 0,
+            "elapsed_ms": 0.0,
+            "error_type": None,
+        }
 
     def get_response(self, content: str) -> str:
+        start_time = time.monotonic()
+        attempts = 0
         while True:
             try:
+                attempts += 1
                 response = self._do_request(content)
+                self.last_request_meta = {
+                    "status": "success",
+                    "attempts": attempts,
+                    "elapsed_ms": round((time.monotonic() - start_time) * 1000, 3),
+                    "error_type": None,
+                }
                 return response
-            except:
+            except Exception as exc:
+                self.last_request_meta = {
+                    "status": "llm_error",
+                    "attempts": attempts,
+                    "elapsed_ms": round((time.monotonic() - start_time) * 1000, 3),
+                    "error_type": type(exc).__name__,
+                }
                 continue
 
     def _do_request(self, content: str) -> str:
