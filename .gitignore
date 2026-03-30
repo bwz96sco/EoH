@@ -16,3 +16,4 @@ examples/user_abr/results*/
 env/
 .gitnexus
 .trellis/tasks/*/*.jsonl
+_backup/

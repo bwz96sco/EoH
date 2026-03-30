@@ -84,6 +84,7 @@ class RunRecord:
     abstract: str
     phase_status: dict[str, str]
     configs: list[EohConfigSummary]
+    primary_summaries: list[SuiteSummary]
     suite_summaries: list[SuiteSummary]
     summary_csv: Path | None
     report_path: Path | None
@@ -301,6 +302,39 @@ def load_suite_summaries(summary_csv: Path | None) -> list[SuiteSummary]:
     return summaries
 
 
+def load_summary_rows(summary_csv: Path | None) -> dict[str, SuiteSummary]:
+    if summary_csv is None or not summary_csv.is_file():
+        return {}
+
+    rows: dict[str, dict[str, str]] = {}
+    with open(summary_csv, "r", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            dataset = row.get("Dataset")
+            if dataset:
+                rows[dataset] = row
+
+    summaries: dict[str, SuiteSummary] = {}
+    for row_name, row in rows.items():
+        best_label = None
+        best_value = None
+        for scheme in BASELINE_SCHEMES:
+            value = parse_float(row.get(scheme))
+            if value is None:
+                continue
+            if best_value is None or value > best_value:
+                best_value = value
+                best_label = SCHEME_LABELS[scheme]
+
+        summaries[row_name] = SuiteSummary(
+            row_name=row_name,
+            eoh_value=parse_float(row.get("sim_eoh")),
+            best_baseline_label=best_label,
+            best_baseline_value=best_value,
+        )
+    return summaries
+
+
 def determine_status(summary_csv: Path | None, configs: list[EohConfigSummary], log_path: Path | None) -> str:
     if summary_csv is not None and summary_csv.is_file():
         return "completed"
@@ -315,6 +349,34 @@ def build_scope(configs: list[EohConfigSummary]) -> list[str]:
         if config.target not in unique_targets:
             unique_targets.append(config.target)
     return unique_targets
+
+
+def primary_row_name_for_scope_item(scope_item: str) -> str:
+    if scope_item == "ABRBench-3G":
+        return "ABRBench-3G (avg)"
+    if scope_item == "ABRBench-4G+":
+        return "ABRBench-4G+ (avg)"
+    return scope_item
+
+
+def select_primary_summaries(
+    scope: list[str],
+    summary_rows: dict[str, SuiteSummary],
+) -> list[SuiteSummary]:
+    selected: list[SuiteSummary] = []
+    for scope_item in scope:
+        row_name = primary_row_name_for_scope_item(scope_item)
+        summary = summary_rows.get(row_name)
+        if summary is not None:
+            selected.append(summary)
+
+    if selected:
+        return selected
+
+    overall = summary_rows.get("Overall (avg)")
+    if overall is not None:
+        return [overall]
+    return []
 
 
 def build_abstract(scope: list[str], configs: list[EohConfigSummary], phase_status: dict[str, str], status: str) -> str:
@@ -345,9 +407,11 @@ def discover_run_record(run_root: Path) -> RunRecord:
 
     configs = load_configs(run_root)
     phase_status = load_phase_status(log_path if log_path.is_file() else None)
+    scope = build_scope(configs)
+    summary_rows = load_summary_rows(summary_csv if summary_csv.is_file() else None)
+    primary_summaries = select_primary_summaries(scope, summary_rows)
     suite_summaries = load_suite_summaries(summary_csv if summary_csv.is_file() else None)
     status = determine_status(summary_csv if summary_csv.is_file() else None, configs, log_path if log_path.is_file() else None)
-    scope = build_scope(configs)
     abstract = build_abstract(scope, configs, phase_status, status)
 
     heuristic_snapshots = []
@@ -367,6 +431,7 @@ def discover_run_record(run_root: Path) -> RunRecord:
         abstract=abstract,
         phase_status=phase_status,
         configs=configs,
+        primary_summaries=primary_summaries,
         suite_summaries=suite_summaries,
         summary_csv=summary_csv if summary_csv.is_file() else None,
         report_path=report_path if report_path.is_file() else None,
@@ -420,14 +485,20 @@ def format_heuristic_snapshot(snapshot: HeuristicSnapshot) -> str:
 def build_table_row(record: RunRecord) -> str:
     models = ", ".join(sorted({config.model for config in record.configs if config.model})) or "unknown"
     scope = ", ".join(record.scope) if record.scope else "-"
-    overall = next((summary for summary in record.suite_summaries if summary.row_name == "Overall (avg)"), None)
-    if overall and overall.eoh_value is not None:
-        if overall.best_baseline_label and overall.best_baseline_value is not None:
-            result = f"EoH {overall.eoh_value:.1f} vs {overall.best_baseline_label} {overall.best_baseline_value:.1f}"
+    result_parts = []
+    for summary in record.primary_summaries:
+        if summary.eoh_value is None:
+            continue
+
+        label = summary.row_name.removesuffix(" (avg)")
+        if summary.best_baseline_label and summary.best_baseline_value is not None:
+            result_parts.append(
+                f"{label}: EoH {summary.eoh_value:.1f} vs {summary.best_baseline_label} {summary.best_baseline_value:.1f}"
+            )
         else:
-            result = f"EoH {overall.eoh_value:.1f}"
-    else:
-        result = "analysis pending"
+            result_parts.append(f"{label}: EoH {summary.eoh_value:.1f}")
+
+    result = "; ".join(result_parts) if result_parts else "analysis pending"
     return f"| `{record.run_id}` | `{record.status}` | {models} | {scope} | {result} |"
 
 
@@ -442,7 +513,7 @@ def render_tracker(records: list[RunRecord]) -> str:
         "",
         "## Summary Table",
         "",
-        "| Run ID | Status | Models | Scope | Overall Summary |",
+        "| Run ID | Status | Models | Scope | Primary Comparison |",
         "| --- | --- | --- | --- | --- |",
     ]
 
@@ -490,6 +561,10 @@ def render_tracker(records: list[RunRecord]) -> str:
             lines.extend(format_suite_summary(summary) for summary in record.suite_summaries)
         else:
             lines.append("- Short result record: analysis not available")
+
+        if record.primary_summaries:
+            lines.append("- Primary comparison focus:")
+            lines.extend(format_suite_summary(summary) for summary in record.primary_summaries)
 
         if record.heuristic_snapshots:
             lines.append("- Best heuristic snapshots:")
