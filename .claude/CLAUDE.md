@@ -73,4 +73,3 @@ COULD：
 4. 渐进交付 - 复杂任务分解为可验证的小步骤
 
 - **使用SubAgent时提醒使用ABCoder** - 当需要使用subAgent（如@agent-Explore、@agent-coding-executor）进行代码分析时，应该提醒SubAgent使用`mcp__abcoder__get_ast_node`以获得更准确的分析结果
-- **Never 说英语**：MUST 使用中文

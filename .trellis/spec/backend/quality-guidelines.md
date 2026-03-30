@@ -74,7 +74,7 @@ Docstrings are rare. When present, they use one-liner or informal style. **For n
 ### Factory/Delegation Pattern (Core Architecture)
 
 ```python
-# eoh/src/eoh/eoh.py:32-42 -- EVOL delegates to resolved method
+# eoh/src/eoh/eoh.py:41-51 -- EVOL delegates to resolved method
 def run(self):
     problemGenerator = problems.Probs(self.paras)
     problem = problemGenerator.get_problem()
@@ -88,7 +88,7 @@ def run(self):
 All configuration flows through a single `Paras` object using `setattr`:
 
 ```python
-# eoh/src/eoh/utils/getParas.py:99-113
+# eoh/src/eoh/utils/getParas.py:116-121
 def set_paras(self, *args, **kwargs):
     for key, value in kwargs.items():
         if hasattr(self, key):
@@ -153,6 +153,243 @@ ctx = {
 ```
 
 **Why**: Hidden `ctx` fields cause prompt/schema drift and make evolved heuristics depend on evaluator internals instead of their own code.
+
+---
+
+## Evolution Operator Conventions
+
+### How to Add a New Operator
+
+Adding a new evolution operator requires changes in exactly two files. No other files need modification.
+
+**File 1: `eoh/src/eoh/methods/eoh/eoh_evolution.py`** -- Add prompt constructor and execution wrapper:
+
+```python
+# Step 1: Add prompt constructor
+# Follow the naming convention: get_prompt_XX() where XX is the operator name
+def get_prompt_XX(self, indiv1):
+    # For mutation operators (single parent): accept indiv1 as a dict
+    # For crossover operators (multiple parents): accept indivs as a list of dicts
+    prompt_content = self.prompt_task + "\n"
+    # ... construct prompt ...
+    # MUST end with: "Do not give additional explanations."
+    return prompt_content
+
+# Step 2: Add execution wrapper
+# Follow the naming convention: XX() matching the operator name
+def XX(self, parents):
+    prompt_content = self.get_prompt_XX(parents)
+
+    if self.debug_mode:
+        print("\n >>> check prompt for creating algorithm using [ XX ] : \n", prompt_content)
+        print(">>> Press 'Enter' to continue")
+        input()
+
+    [code_all, algorithm] = self._get_alg(prompt_content)
+
+    if self.debug_mode:
+        print("\n >>> check designed algorithm: \n", algorithm)
+        print("\n >>> check designed code: \n", code_all)
+        print(">>> Press 'Enter' to continue")
+        input()
+
+    return [code_all, algorithm]
+```
+
+**File 2: `eoh/src/eoh/methods/eoh/eoh_interface_EC.py`** -- Add dispatch in `_get_alg()`:
+
+```python
+# eoh/src/eoh/methods/eoh/eoh_interface_EC.py:274-302
+# Add elif branch in _get_alg():
+elif operator == "XX":
+    # For mutation: select 1 parent, pass parents[0]
+    parents = self.select.parent_selection(pop, 1)
+    [offspring['code'], offspring['algorithm']] = self.evol.XX(parents[0])
+    # For crossover: select self.m parents, pass list
+    # parents = self.select.parent_selection(pop, self.m)
+    # [offspring['code'], offspring['algorithm']] = self.evol.XX(parents)
+```
+
+### Operator Naming Convention
+
+| Prefix | Type | Parent Count | Existing Operators |
+|--------|------|--------------|-------------------|
+| `i` | Initialization | 0 (no parents) | `i1` |
+| `e` | Crossover/exploration | `m` (configurable, default 2) | `e1`, `e2` |
+| `m` | Mutation | 1 | `m1`, `m2`, `m3` |
+
+### Prompt Template Pattern
+
+All operators follow the same structure inside `get_prompt_XX()`:
+
+1. **Task description**: `self.prompt_task` (from problem's `GetPrompts`)
+2. **Parent context**: Algorithm descriptions and code of selected parents (for `e`/`m` operators)
+3. **Instruction**: What kind of new algorithm to create (different form, modified version, etc.)
+4. **Output format**: Brace-wrapped description + Python function with specified name, inputs, outputs
+5. **Closing**: `"Do not give additional explanations."`
+
+The `_get_alg()` method handles all LLM communication and response parsing uniformly:
+
+```python
+# eoh/src/eoh/methods/eoh/eoh_evolution.py:192-251
+def _get_alg(self, prompt_content):
+    # 1. Check total timeout budget
+    # 2. Call LLM via self.interface_llm.get_response()
+    # 3. Extract algorithm description via regex: r"\{(.*)\}"
+    # 4. Extract code via regex: r"import.*return" or r"def.*return"
+    # 5. Retry up to 4 times if extraction fails
+    # 6. Set last_generation_meta with status
+    # 7. Return [code_all, algorithm] on success, raise on failure
+```
+
+### LLM Response Parsing
+
+The `_extract_algorithm_and_code()` static method extracts two components from LLM output:
+
+```python
+# eoh/src/eoh/methods/eoh/eoh_evolution.py:54-72
+@staticmethod
+def _extract_algorithm_and_code(response):
+    # Algorithm description: content inside curly braces {description}
+    algorithm = re.findall(r"\{(.*)\}", response, re.DOTALL)
+    # Fallback: text before 'python', 'import', or 'def' keyword
+    if len(algorithm) == 0:
+        if 'python' in response:
+            algorithm = re.findall(r'^.*?(?=python)', response, re.DOTALL)
+        elif 'import' in response:
+            algorithm = re.findall(r'^.*?(?=import)', response, re.DOTALL)
+        else:
+            algorithm = re.findall(r'^.*?(?=def)', response, re.DOTALL)
+
+    # Code: from 'import' to 'return' (full function with imports)
+    code = re.findall(r"import.*return", response, re.DOTALL)
+    # Fallback: from 'def' to 'return' (function without imports)
+    if len(code) == 0:
+        code = re.findall(r"def.*return", response, re.DOTALL)
+
+    return algorithm, code
+```
+
+---
+
+## Selection/Management Strategy Pattern
+
+### Module-as-Strategy Reference
+
+Selection and management strategies are plain modules with a single function. The module itself is passed as a strategy object:
+
+```python
+# eoh/src/eoh/methods/methods.py:9-11
+if paras.selection == "prob_rank":
+    self.select = prob_rank  # The module, not a function
+
+# Called as:
+# eoh/src/eoh/methods/eoh/eoh_interface_EC.py:285
+parents = self.select.parent_selection(pop, self.m)
+```
+
+### Selection Strategy Contract
+
+```python
+# Signature: parent_selection(pop: list[dict], m: int) -> list[dict]
+# pop: sorted list of individuals (best first), each with 'objective', 'algorithm', 'code'
+# m: number of parents to select
+# Returns: list of m individual dicts
+
+# Example: eoh/src/eoh/methods/selection/prob_rank.py:1-6
+import random
+def parent_selection(pop, m):
+    ranks = [i for i in range(len(pop))]
+    probs = [1 / (rank + 1 + len(pop)) for rank in ranks]
+    parents = random.choices(pop, weights=probs, k=m)
+    return parents
+```
+
+### Management Strategy Contract
+
+Two different signatures exist depending on the method type:
+
+**Population-based** (EOH, AEL):
+
+```python
+# Signature: population_management(pop: list[dict], size: int) -> list[dict]
+# pop: full population including new offspring
+# size: target population size
+# Returns: trimmed population
+
+# Example: eoh/src/eoh/methods/management/pop_greedy.py:1-16
+import heapq
+def population_management(pop, size):
+    pop = [individual for individual in pop if individual['objective'] is not None]
+    # ... deduplicate by objective ...
+    pop_new = heapq.nsmallest(size, unique_pop, key=lambda x: x['objective'])
+    return pop_new
+```
+
+**Point-based** (LS, SA):
+
+```python
+# Signature: population_management(population: list[dict], new: dict, temperature: float) -> None
+# population: single-element list, mutated in place
+# new: candidate individual
+# temperature: SA temperature (ignored by ls_greedy)
+
+# Example: eoh/src/eoh/methods/management/ls_greedy.py:1-6
+def population_management(population, new, temperature):
+    if (new['objective'] != None) and (len(population) == 0 or new['objective'] < population[0]['objective']):
+        population[0] = new
+    return
+```
+
+---
+
+## Code Evaluation Safety Patterns
+
+### Subprocess Isolation
+
+LLM-generated code runs in a separate `multiprocessing.Process` to prevent crashes or hangs from affecting the main process:
+
+```python
+# eoh/src/eoh/methods/eoh/eoh_interface_EC.py:21-30
+def _evaluate_worker(interface_eval, code, use_details, result_queue):
+    try:
+        if use_details:
+            fitness, other_inf = interface_eval.evaluate_with_details(code)
+        else:
+            fitness = interface_eval.evaluate(code)
+            other_inf = None
+        result_queue.put(("ok", fitness, other_inf, None))
+    except Exception as exc:
+        result_queue.put(("error", None, None, f"{type(exc).__name__}: {exc}"))
+```
+
+Key safety properties:
+1. **Process isolation**: Code runs in a forked process (or spawn on non-Unix), so segfaults/infinite loops don't affect the parent
+2. **Timeout enforcement**: `process.join(timeout=self.timeout)` followed by `process.terminate()` kills stuck evaluations
+3. **Queue-based results**: `multiprocessing.Queue` transfers results safely across process boundaries
+4. **Exception containment**: The worker catches all exceptions and serializes them through the queue
+
+### Numba Acceleration (Optional)
+
+When `eva_numba_decorator=True`, LLM-generated code is AST-transformed to add `@numba.jit(nopython=True)`:
+
+```python
+# eoh/src/eoh/methods/eoh/eoh_interface_EC.py:316-326
+if self.use_numba:
+    pattern = r"def\s+(\w+)\s*\(.*\):"
+    match = re.search(pattern, offspring['code'])
+    function_name = match.group(1)
+    code = add_numba_decorator(program=offspring['code'], function_name=function_name)
+```
+
+The AST transformation in `evaluator_accelerate.py`:
+1. Parses the code string to an AST
+2. Adds `import numba` if not present
+3. Finds the target function definition
+4. Appends `@numba.jit(nopython=True)` to its decorator list
+5. Unparses back to string
+
+---
 
 ## Scenario: ABR Multi-Step State Contract
 
@@ -570,7 +807,15 @@ ABR_BACKUP_REMOTE=onedrive_raw:EoH-backup bash experiments/run_experiment.sh
 
 ```python
 class InterfaceAPI:
-    def __init__(self, api_endpoint, api_key, model_LLM, debug_mode):
+    def __init__(
+        self,
+        api_endpoint,
+        api_key,
+        model_LLM,
+        debug_mode,
+        request_timeout_s=30,
+        total_timeout_s=90,
+    ):
         ...
 
     def get_response(self, prompt_content):
@@ -605,15 +850,189 @@ class InterfaceAPI:
 - `python3 -m py_compile eoh/src/eoh/llm/api_general.py`
 - One real API smoke check that verifies `get_response("Reply with only: 2")` returns a normal completion on the configured endpoint.
 
+## Scenario: Evolution Operator Extension Contract
+
+### 1. Scope / Trigger
+- Trigger: adding or modifying any EOH operator in `eoh/src/eoh/methods/eoh/`.
+
+### 2. Signatures
+
+```python
+# eoh/src/eoh/methods/eoh/eoh_evolution.py
+class Evolution:
+    def get_prompt_i1(self): ...
+    def get_prompt_e1(self, indivs): ...
+    def get_prompt_e2(self, indivs): ...
+    def get_prompt_m1(self, indiv1): ...
+    def get_prompt_m2(self, indiv1): ...
+    def get_prompt_m3(self, indiv1): ...
+    def _get_alg(self, prompt_content): ...
+
+# eoh/src/eoh/methods/eoh/eoh_interface_EC.py
+class InterfaceEC:
+    def _get_alg(self, pop, operator): ...
+```
+
+### 3. Contracts
+- An operator is not "implemented" until three pieces exist together:
+  - prompt builder in `Evolution`
+  - wrapper method in `Evolution`
+  - dispatch branch in `InterfaceEC._get_alg()`
+- `e1` and `e2` are crossover-style operators and must request `self.m` parents.
+- `m1`, `m2`, and `m3` are mutation-style operators and must request one parent.
+- `m1` is the feedback-aware operator. It may inject `other_inf` into the prompt when evaluator feedback is available.
+- `Evolution._get_alg()` is the shared parse/retry/metadata path. Do not fork per-operator parsing logic away from it.
+- `Paras.set_ec()` still defaults EOH to `['e1', 'e2', 'm1', 'm2']` at `eoh/src/eoh/utils/getParas.py:76-90`; callers that want `m3` must opt in explicitly, as `examples/user_abr/runEoH.py:309-321` does.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+|-----------|-------------------|
+| Added `get_prompt_m4()` only | Incomplete change; nothing dispatches it |
+| Added dispatch branch only | Incomplete change; there is no prompt builder or wrapper |
+| `e1`/`e2` uses one parent | Contract drift; crossover prompt and parent semantics no longer match |
+| `m1` drops `other_inf` feedback injection | Regression; evaluator guidance can no longer steer mutation |
+| Operator list includes new op but weights were not updated | Config must still provide aligned `ec_operator_weights` semantics |
+
+### 5. Good/Base/Bad Cases
+- Good: add `get_prompt_m4()`, `m4()`, and `elif operator == "m4": ... self.evol.m4(...)` together.
+- Good: enable `m3` from a caller without changing the default global EOH operator list.
+- Base: tune wording inside an existing prompt builder while keeping dispatch and wrapper contracts unchanged.
+- Bad: implement a new operator only in `eoh_evolution.py`.
+- Bad: let a mutation operator request `self.m` parents even though its prompt is singular.
+
+### 6. Tests Required
+- `python3 -m py_compile eoh/src/eoh/methods/eoh/eoh_evolution.py eoh/src/eoh/methods/eoh/eoh_interface_EC.py`
+- Manual smoke run with `ec_pop_size=2`, `ec_n_pop=1`, and the target operator enabled
+- `exp_debug_mode=True` prompt inspection for the modified operator
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+def get_prompt_m4(self, indiv1):
+    return self.prompt_task + "\n..."
+```
+
+#### Correct
+
+```python
+# eoh/src/eoh/methods/eoh/eoh_interface_EC.py
+elif operator == "m4":
+    parents = self.select.parent_selection(pop, 1)
+    [offspring['code'], offspring['algorithm']] = self.evol.m4(parents[0])
+```
+
+## Scenario: Selection and Management Strategy Contract
+
+### 1. Scope / Trigger
+- Trigger: adding or changing any file under `eoh/src/eoh/methods/selection/` or `eoh/src/eoh/methods/management/`.
+
+### 2. Signatures
+
+```python
+def parent_selection(pop, m): ...
+def parent_selection(population, m): ...
+
+def population_management(pop, size): ...
+def population_management(population, new, temperature): ...
+```
+
+### 3. Contracts
+- `Methods.__init__()` stores imported strategy modules, then downstream code calls `self.select.parent_selection(...)` or `self.manage.population_management(...)`.
+- All selection strategies must expose the symbol name `parent_selection`, even if their local parameter names differ.
+- `pop_greedy.population_management(pop, size)` must return a new list and is the EOH/AEL-style contract.
+- `ls_greedy.population_management(population, new, temperature)` and `ls_sa.population_management(population, new, temperature)` mutate `population[0]` in place and are the LS/SA-style contract.
+- `pop_greedy` is also the cleanup boundary that filters `objective is not None`, removes duplicate objectives, and truncates with `heapq.nsmallest(...)`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+|-----------|-------------------|
+| Strategy file exports `select_parents` instead of `parent_selection` | Downstream callers fail because the module contract changed |
+| Population strategy mutates in place instead of returning a list | EOH/AEL call sites break because they assign the return value |
+| LS strategy returns a list | LS/SA call sites ignore the returned list and silently drift |
+| Selection strategy assumes maximization | Parent choices become wrong because EOH minimizes objective values |
+
+### 5. Good/Base/Bad Cases
+- Good: `prob_rank.parent_selection(pop, m)` biases toward earlier ranks.
+- Good: `pop_greedy.population_management(pop, size)` filters invalid individuals and returns a sorted best-N list.
+- Base: add one module and one matching `elif` branch in `Methods.__init__()`.
+- Bad: rename the exported function in a strategy file.
+- Bad: copy LS management logic into an EOH/AEL population strategy without changing the return contract.
+
+### 6. Tests Required
+- `python3 -m py_compile eoh/src/eoh/methods/methods.py eoh/src/eoh/methods/selection/*.py eoh/src/eoh/methods/management/*.py`
+- One EOH smoke run if a population-style strategy changed
+- One LS/SA smoke run if a local-search-style strategy changed
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+def select_parents(pop, m):
+    return random.sample(pop, m)
+```
+
+#### Correct
+
+```python
+# eoh/src/eoh/methods/selection/tournament.py:4-12
+def parent_selection(population, m):
+    tournament_size = 2
+    parents = []
+    while len(parents) < m:
+        tournament = random.sample(population, tournament_size)
+        tournament_fitness = [fit['objective'] for fit in tournament]
+        winner = tournament[tournament_fitness.index(min(tournament_fitness))]
+        parents.append(winner)
+    return parents
+```
+
 ### Module-as-Strategy Pattern
 
 Selection and management strategies are plain modules with a single function:
 
 ```python
-# eoh/src/eoh/methods/selection/prob_rank.py
+# eoh/src/eoh/methods/selection/prob_rank.py:2-5
 def parent_selection(pop, m):
-    # Returns list of m parents
-    ...
+    ranks = [i for i in range(len(pop))]
+    probs = [1 / (rank + 1 + len(pop)) for rank in ranks]
+    parents = random.choices(pop, weights=probs, k=m)
+    return parents
+```
+
+```python
+# eoh/src/eoh/methods/management/pop_greedy.py:3-16
+def population_management(pop, size):
+    pop = [individual for individual in pop if individual['objective'] is not None]
+    if size > len(pop):
+        size = len(pop)
+    unique_pop = []
+    unique_objectives = []
+    for individual in pop:
+        if individual['objective'] not in unique_objectives:
+            unique_pop.append(individual)
+            unique_objectives.append(individual['objective'])
+    pop_new = heapq.nsmallest(size, unique_pop, key=lambda x: x['objective'])
+    return pop_new
+```
+
+Resolver side:
+
+```python
+# eoh/src/eoh/methods/methods.py:9-27
+if paras.selection == "prob_rank":
+    self.select = prob_rank
+elif paras.selection == "equal":
+    self.select = equal
+
+if paras.management == "pop_greedy":
+    self.manage = pop_greedy
+elif paras.management == 'ls_sa':
+    self.manage = ls_sa
 ```
 
 ### Individual Data Schema
@@ -638,16 +1057,20 @@ offspring = {
 3. **Never commit API keys** -- LLM credentials must be set at runtime via `set_paras()` or environment variables.
 4. **Never skip the try/except in evaluate()** -- LLM-generated code is untrusted and will frequently fail.
 5. **Never modify the individual dict schema** without updating all three method implementations (EOH, AEL, LS).
+6. **Never add new operators only in `eoh_evolution.py`** -- the dispatch in `eoh_interface_EC.py:_get_alg()` must also be updated.
+7. **Never bypass subprocess isolation for evaluation** -- always run LLM-generated code in a separate process with timeout.
 
 ---
 
 ## Required Patterns
 
 1. **Wrap `exec()` in try/except** -- all evaluation of LLM-generated code must catch `Exception` and return `None`
-2. **Set timeouts** -- always use `ThreadPoolExecutor` with timeout for evaluation calls
+2. **Set timeouts** -- use the current subprocess-isolation pattern (`multiprocessing.Process` + `Queue` + `join(timeout=...)`) and keep the outer joblib worker budget aligned with `llm_total_timeout_s + eva_timeout + 15`
 3. **Suppress warnings in evaluate** -- use `with warnings.catch_warnings(): warnings.simplefilter("ignore")`
 4. **Save results per generation** -- write population JSON to `results/pops/` at the end of each generation
 5. **Gate debug output** -- verbose output should be behind `if self.debug_mode:`
+6. **Record diagnostics** -- new evaluation paths should write `_diagnostic_record()` entries for timeout analysis
+7. **Propagate meta** -- set `last_request_meta` / `last_generation_meta` after LLM interactions
 
 ---
 
@@ -674,6 +1097,7 @@ These are known duplications in the codebase:
 1. **`evaluator_accelerate.py`** is identically copied in `methods/eoh/`, `methods/ael/`, and `methods/localsearch/`
 2. **Method classes** (EOH, AEL, LS) have near-identical `__init__` and `run()` methods (~90% identical)
 3. **User-defined problem classes** in examples are often copy-pasted from built-in problem classes
+4. **Evolution/interface classes** across methods (eoh, ael, localsearch) share similar patterns but with method-specific variations
 
 When modifying shared patterns, check all three method implementations.
 
@@ -682,10 +1106,13 @@ When modifying shared patterns, check all three method implementations.
 ## Code Review Checklist
 
 - [ ] `evaluate()` methods catch `Exception` and return `None`
-- [ ] Timeouts set for evaluation calls
+- [ ] Timeouts set for evaluation calls (subprocess + join timeout)
 - [ ] Debug output gated behind `debug_mode`
 - [ ] Population JSON saved per generation
 - [ ] No hardcoded API keys or credentials
 - [ ] New parameters added to `Paras.__init__` with defaults
 - [ ] Changes to individual schema reflected in all methods
 - [ ] No `logging` module introduced
+- [ ] New operators have both `get_prompt_XX()` + `XX()` in evolution and dispatch in `_get_alg()`
+- [ ] Diagnostic records written on both success and failure paths
+- [ ] `last_request_meta` / `last_generation_meta` updated after LLM calls

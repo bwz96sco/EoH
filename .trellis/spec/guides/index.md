@@ -1,19 +1,19 @@
 # Thinking Guides
 
-> **Purpose**: Expand your thinking to catch things you might not have considered.
+> **Purpose**: EoH-specific pre-implementation checklists for extension work, experiment runners, and runtime contract changes.
 
 ---
 
-## Why Thinking Guides?
+## Why These Guides Exist
 
-**Most bugs and tech debt come from "didn't think of that"**, not from lack of skill:
+EoH bugs usually come from **missed registration points and drift between layers**, not from syntax errors:
 
-- Didn't think about what happens at layer boundaries → cross-layer bugs
-- Didn't think about code patterns repeating → duplicated code everywhere
-- Didn't think about edge cases → runtime errors
-- Didn't think about future maintainers → unreadable code
+- `Paras` changes do not automatically propagate into factories or runners
+- prompt contracts can drift away from evaluator expectations
+- method and strategy modules look interchangeable until their call signatures diverge
+- example runners often carry the only working integration path for a feature
 
-These guides help you **ask the right questions before coding**.
+These guides are short decision aids for the actual seams in this repo: `Paras`, `EVOL`, `Probs`, `Methods`, `EOH`/`AEL`/`LS`, `InterfaceEC`, `Evolution`, `InterfaceLLM`, and the example problems under `examples/`.
 
 ---
 
@@ -21,9 +21,10 @@ These guides help you **ask the right questions before coding**.
 
 | Guide | Purpose | When to Use |
 |-------|---------|-------------|
-| [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | When you notice repeated patterns |
-| [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
-| [Cross-Platform Thinking Guide](./cross-platform-thinking-guide.md) | Catch platform-specific assumptions | Scripts, paths, commands |
+| [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Find the existing EoH pattern before copying files or loops | New method/problem/operator/backend, or repeated logic in `eoh/src/eoh/` and `examples/` |
+| [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Trace config, prompt, LLM, evaluation, and persistence boundaries | Any change that crosses `Paras`, registries, prompts, evaluation, or output layout |
+| [Cross-Platform Thinking Guide](./cross-platform-thinking-guide.md) | Catch multiprocessing, path, env, and endpoint portability risks | Scripts, subprocesses, `joblib`, local/remote LLM backends, path handling |
+| [Extending EoH](./extending-eoh.md) | Central checklist for adding new extension points | New problem domain, method, operator, strategy, or LLM backend |
 
 ---
 
@@ -31,59 +32,70 @@ These guides help you **ask the right questions before coding**.
 
 ### When to Think About Cross-Layer Issues
 
-- [ ] Feature touches 3+ layers (API, Service, Component, Database)
-- [ ] Data format changes between layers
-- [ ] Multiple consumers need the same data
-- [ ] You're not sure where to put some logic
+- [ ] You are changing any field or default in `eoh/src/eoh/utils/getParas.py:7-133`
+- [ ] You are registering or renaming a problem in `eoh/src/eoh/problems/problems.py:6-25`
+- [ ] You are registering or renaming a method, selection strategy, or management strategy in `eoh/src/eoh/methods/methods.py:6-51`
+- [ ] You are widening a prompt/evaluator contract such as ABR `state` / `ctx`
+- [ ] You are changing output layout, checkpoint paths, or experiment wrappers
 
 → Read [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md)
 
 ### When to Think About Code Reuse
 
-- [ ] You're writing similar code to something that exists
-- [ ] You see the same pattern repeated 3+ times
-- [ ] You're adding a new field to multiple places
-- [ ] **You're modifying any constant or config**
-- [ ] **You're creating a new utility/helper function** ← Search first!
+- [ ] You are adding a new method and are tempted to copy `EOH`, `AEL`, or `LS`
+- [ ] You are adding a new problem and there is already a similar one in `eoh/src/eoh/problems/` or `examples/user_*`
+- [ ] You are adding a new operator string or prompt builder
+- [ ] You are creating a new selection or management module
+- [ ] You are modifying config names, output schema, or helper utilities
 
 → Read [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md)
 
 ### When to Think About Cross-Platform Issues
 
-- [ ] Writing scripts that users will run directly
-- [ ] Adding usage examples or help text
-- [ ] Working with file paths or commands
-- [ ] **Migrating from shell scripts to Python**
+- [ ] You are touching `multiprocessing`, `joblib`, or subprocess-based evaluation
+- [ ] You are adding or changing path logic in example runners or experiment scripts
+- [ ] You are switching between local and remote LLM backends
+- [ ] You are loading `.env` files or importing external code from `env/`
 
 → Read [Cross-Platform Thinking Guide](./cross-platform-thinking-guide.md)
 
+### When to Read Extending EoH
+
+- [ ] You are adding a new built-in problem
+- [ ] You are adding a new user-defined problem example
+- [ ] You are adding a new evolution method or EC operator
+- [ ] You are adding a new selection / management strategy
+- [ ] You are adding a new LLM adapter or backend selection branch
+
+→ Read [Extending EoH](./extending-eoh.md)
+
 ---
 
-## Pre-Modification Rule (CRITICAL)
+## Pre-Modification Rule
 
-> **Before changing ANY value, ALWAYS search first!**
+> **Search the registry, dispatch point, and example runner before editing.**
 
 ```bash
-# Search for the value you're about to change
-grep -r "value_to_change" .
+# Registry and strategy wiring
+rg -n "get_method|selection ==|management ==" eoh/src/eoh/methods eoh/src/eoh/utils
+
+# Problem registration and prompt/evaluator contracts
+rg -n "self\\.prompts|def evaluate|def evaluate_with_details|problem =" eoh/src/eoh/problems examples
+
+# Operator strings and prompt builders
+rg -n "ec_operators|get_prompt_|operator ==" eoh/src/eoh examples
 ```
 
-This single habit prevents most "forgot to update X" bugs.
+This catches most "updated one layer, forgot the other two" failures.
 
 ---
 
 ## How to Use This Directory
 
-1. **Before coding**: Skim the relevant thinking guide
-2. **During coding**: If something feels repetitive or complex, check the guides
-3. **After bugs**: Add new insights to the relevant guide (learn from mistakes)
+1. Skim the relevant guide before editing code or example runners.
+2. Use the file-and-line references to inspect the current working pattern, not a remembered one.
+3. If you discover a new repo-specific trap, add it here as a checklist item with a concrete file reference.
 
 ---
 
-## Contributing
-
-Found a new "didn't think of that" moment? Add it to the relevant guide.
-
----
-
-**Core Principle**: 30 minutes of thinking saves 3 hours of debugging.
+**Core Principle**: In EoH, search-before-edit is cheaper than debugging factory drift later.

@@ -55,7 +55,53 @@ detect_project_info() {
     return 0
   fi
 
-  # 4. 未检测到目标语言
+  # 4. 检测 Python 项目（判断 pyproject.toml / setup.py / setup.cfg）
+  if [[ -f "${target_dir}/pyproject.toml" ]]; then
+    local py_name=$(grep -A5 '^\[project\]' "${target_dir}/pyproject.toml" 2>/dev/null | grep '^name' | head -1 | sed 's/.*=\s*"\(.*\)"/\1/')
+    if [[ -n "$py_name" ]]; then
+      echo "python|${py_name}"
+      return 0
+    fi
+    echo "python|$(get_basename "$target_dir")"
+    return 0
+  fi
+  if [[ -f "${target_dir}/setup.py" || -f "${target_dir}/setup.cfg" ]]; then
+    echo "python|$(get_basename "$target_dir")"
+    return 0
+  fi
+  local py_file_count=$(find "${target_dir}" -maxdepth 3 -type f -not -path "*/.venv/*" -not -path "*/venv/*" -not -path "*/__pycache__/*" -name "*.py" 2>/dev/null | head -5 | wc -l)
+  if [[ $py_file_count -gt 0 ]]; then
+    echo "python|$(get_basename "$target_dir")"
+    return 0
+  fi
+
+  # 5. 检测 Rust 项目（Cargo.toml）
+  if [[ -f "${target_dir}/Cargo.toml" ]]; then
+    local rust_name=$(grep '^name' "${target_dir}/Cargo.toml" | head -1 | sed 's/.*=\s*"\(.*\)"/\1/')
+    if [[ -n "$rust_name" ]]; then
+      echo "rust|${rust_name}"
+      return 0
+    fi
+    echo "rust|$(get_basename "$target_dir")"
+    return 0
+  fi
+
+  # 6. 检测 Java 项目（pom.xml / build.gradle）
+  if [[ -f "${target_dir}/pom.xml" || -f "${target_dir}/build.gradle" || -f "${target_dir}/build.gradle.kts" ]]; then
+    echo "java|$(get_basename "$target_dir")"
+    return 0
+  fi
+
+  # 7. 检测 C 项目（Makefile/CMakeLists + .c 文件）
+  if [[ -f "${target_dir}/Makefile" || -f "${target_dir}/CMakeLists.txt" ]]; then
+    local c_file_count=$(find "${target_dir}" -maxdepth 3 -type f -name "*.c" 2>/dev/null | head -5 | wc -l)
+    if [[ $c_file_count -gt 0 ]]; then
+      echo "c|$(get_basename "$target_dir")"
+      return 0
+    fi
+  fi
+
+  # 8. 未检测到目标语言
   echo "unknown|$(get_basename "$target_dir")"
   return 1
 }
