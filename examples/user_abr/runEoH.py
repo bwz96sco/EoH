@@ -126,6 +126,44 @@ def _build_seed_cache_dir(dataset: str, seed_mode_slug: str) -> Path:
     return seed_cache_root / dataset / seed_mode_slug
 
 
+def _resolve_target_pop_size(default_pop_size: int) -> int:
+    raw_value = os.environ.get("EC_POP_SIZE")
+    if raw_value is None or not raw_value.strip():
+        return default_pop_size
+
+    try:
+        pop_size = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"EC_POP_SIZE must be an integer, got '{raw_value}'.") from exc
+
+    if pop_size < 1:
+        raise ValueError(f"EC_POP_SIZE must be >= 1, got {pop_size}.")
+    return pop_size
+
+
+def _expand_seed_population(
+    seeds: list[dict[str, str]],
+    target_pop_size: int,
+) -> list[dict[str, str]]:
+    if not seeds:
+        raise ValueError("At least one seed is required to build the initial population.")
+
+    if target_pop_size == len(seeds):
+        return [dict(seed) for seed in seeds]
+
+    expanded: list[dict[str, str]] = []
+    name_counts: dict[str, int] = {}
+    for index in range(target_pop_size):
+        seed = dict(seeds[index % len(seeds)])
+        base_name = str(seed.get("name", f"seed-{index % len(seeds)}")).strip() or f"seed-{index % len(seeds)}"
+        copy_count = name_counts.get(base_name, 0) + 1
+        name_counts[base_name] = copy_count
+        if copy_count > 1:
+            seed["name"] = f"{base_name}-copy-{copy_count}"
+        expanded.append(seed)
+    return expanded
+
+
 def main() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     experiments_dir = repo_root / "experiments"
@@ -158,6 +196,12 @@ def main() -> None:
 
     all_seeds = [dict(seed) for seed in problem.prompts.get_seed_heuristics()]
     seeds, seed_mode_label, seed_mode_slug = _resolve_selected_seeds(all_seeds)
+    target_pop_size = _resolve_target_pop_size(len(seeds))
+    if target_pop_size != len(seeds):
+        seed_mode_label = f"{seed_mode_label}; expanded to population size {target_pop_size}"
+        seed_mode_slug = f"{seed_mode_slug}-pop-{target_pop_size}"
+        seeds = _expand_seed_population(seeds, target_pop_size)
+
     selected_seed_names = [
         str(seed.get("name", f"seed-{index}")) for index, seed in enumerate(seeds)
     ]
@@ -203,7 +247,7 @@ def main() -> None:
             llm_api_endpoint=os.environ.get("LLM_API_ENDPOINT"),
             llm_api_key=os.environ.get("LLM_API_KEY"),
             llm_model=os.environ.get("LLM_MODEL"),
-            ec_pop_size=len(seeds),
+            ec_pop_size=target_pop_size,
             ec_n_pop=int(os.environ.get("EC_N_POP", "10")),
             ec_operators=["e1", "e2", "m1", "m2", "m3"],
             exp_n_proc=int(os.environ.get("EXP_N_PROC", "4")),

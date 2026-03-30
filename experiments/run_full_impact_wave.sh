@@ -16,6 +16,7 @@ set -euo pipefail
 #   DATASET_TARGETS_CSV     Override dataset-impact target list
 #   SEED_TARGETS_CSV        Override seed-impact target list
 #   SEEDS_CSV               Override seed names
+#   SEED_IMPACT_POP_SIZE    Population size for seed-impact jobs. Default: 5
 #   ABR_WAVE_BACKUP_REMOTE  Override backup destination for child runs
 # =============================================================================
 
@@ -124,6 +125,9 @@ run_stage_a() {
         export ABR_EVAL_DATASETS="$eval_csv"
         if [[ -n "$seed_name" ]]; then
             export ABR_SEED_NAME="$seed_name"
+            export EC_POP_SIZE="$SEED_IMPACT_POP_SIZE"
+        else
+            unset EC_POP_SIZE
         fi
         export SKIP_PHASE_3=1
         export SKIP_PHASE_4=1
@@ -169,6 +173,9 @@ run_stage_b() {
         export ABR_EVAL_DATASETS="$eval_csv"
         if [[ -n "$seed_name" ]]; then
             export ABR_SEED_NAME="$seed_name"
+            export EC_POP_SIZE="$SEED_IMPACT_POP_SIZE"
+        else
+            unset EC_POP_SIZE
         fi
         export SKIP_PHASE_1=1
         bash experiments/run_eoh_target_experiment.sh
@@ -211,6 +218,7 @@ launch_queue() {
 DATASET_TARGETS_CSV="${DATASET_TARGETS_CSV:-FCC-16,FCC-18,Oboe,Puffer-21,Puffer-22,Norway3G,Lumos4G,Lumos5G,SolisWi-Fi}"
 SEED_TARGETS_CSV="${SEED_TARGETS_CSV:-ABRBench-3G,ABRBench-4G+}"
 SEEDS_CSV="${SEEDS_CSV:-bb,bola,quetra,robust_mpc,rate_based}"
+SEED_IMPACT_POP_SIZE="${SEED_IMPACT_POP_SIZE:-5}"
 
 split_csv_into_array "$DATASET_TARGETS_CSV" DATASET_TARGETS
 split_csv_into_array "$SEED_TARGETS_CSV" SEED_TARGETS
