@@ -17,12 +17,13 @@ Use this skill for any ABR experiment task in EoH. The goal is to keep every exp
 
 ## Choose The Runner
 
-There are only two supported runners:
+There are three supported runners:
 
 | Workflow | Use when | Command |
 |----------|----------|---------|
 | Standard mixed run | Full baseline + mixed `ABRBench-3G` and `ABRBench-4G+` workflow | `bash experiments/run_experiment.sh` |
 | Single target run | One evolution target, optional custom eval scope, and all concurrent EoH-only studies | `ABR_EOH_DATASET=FCC-18 bash experiments/run_eoh_target_experiment.sh` |
+| Full impact wave | Combined dataset-impact + seed-impact study with Stage-A/Stage-B orchestration | `bash experiments/run_full_impact_wave.sh` |
 
 ## Important Environment Knobs
 
@@ -115,7 +116,7 @@ python3 experiments/update_experiment_tracker.py
 1. Classify the request as standard mixed or EoH-only study.
 2. Check whether remote backup is active via `experiments/private/backup.env`.
 3. Use `run_experiment.sh` for the legacy full pipeline, otherwise use `run_eoh_target_experiment.sh`.
-4. For dataset-impact or seed-impact studies, build an explicit run matrix and assign a unique `ABR_RUN_ID` to each job.
+4. For dataset-impact or seed-impact studies, either build an explicit run matrix over `run_eoh_target_experiment.sh` or use `run_full_impact_wave.sh` for the standard combined wave.
 5. If running multiple EoH-only jobs in parallel, keep tracker refresh off during the wave and refresh once at the end.
 6. After completion, report the run ids and relevant paths under `experiments/results/`.
 
