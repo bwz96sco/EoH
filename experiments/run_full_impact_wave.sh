@@ -215,10 +215,10 @@ launch_queue() {
     wait
 }
 
-DATASET_TARGETS_CSV="${DATASET_TARGETS_CSV:-FCC-16,FCC-18,Oboe,Puffer-21,Puffer-22,Norway3G,Lumos4G,Lumos5G,SolisWi-Fi}"
-SEED_TARGETS_CSV="${SEED_TARGETS_CSV:-ABRBench-3G,ABRBench-4G+}"
-SEEDS_CSV="${SEEDS_CSV:-bb,bola,quetra,robust_mpc,rate_based}"
-SEED_IMPACT_POP_SIZE="${SEED_IMPACT_POP_SIZE:-5}"
+DATASET_TARGETS_CSV="${DATASET_TARGETS_CSV-FCC-16,FCC-18,Oboe,Puffer-21,Puffer-22,Norway3G,Lumos4G,Lumos5G,SolisWi-Fi}"
+SEED_TARGETS_CSV="${SEED_TARGETS_CSV-ABRBench-3G,ABRBench-4G+}"
+SEEDS_CSV="${SEEDS_CSV-bb,bola,quetra,robust_mpc,rate_based}"
+SEED_IMPACT_POP_SIZE="${SEED_IMPACT_POP_SIZE-5}"
 
 split_csv_into_array "$DATASET_TARGETS_CSV" DATASET_TARGETS
 split_csv_into_array "$SEED_TARGETS_CSV" SEED_TARGETS
