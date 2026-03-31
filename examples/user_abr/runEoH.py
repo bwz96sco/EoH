@@ -257,8 +257,8 @@ def main() -> None:
             exp_timeout_diagnostics=_env_flag("EOH_TIMEOUT_DIAGNOSTICS", default=False),
             exp_timeout_diagnostics_path=str(timeout_diagnostics_path),
             abr_run_id=run_layout.run_id,
-            llm_request_timeout_s=int(os.environ.get("LLM_REQUEST_TIMEOUT_S", "30")),
-            llm_total_timeout_s=int(os.environ.get("LLM_TOTAL_TIMEOUT_S", "90")),
+            llm_request_timeout_s=int(os.environ.get("LLM_REQUEST_TIMEOUT_S", "60")),
+            llm_total_timeout_s=int(os.environ.get("LLM_TOTAL_TIMEOUT_S", "180")),
             eva_numba_decorator=False,
         )
 
