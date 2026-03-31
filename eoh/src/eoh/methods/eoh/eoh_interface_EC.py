@@ -1,5 +1,6 @@
 import numpy as np
 import multiprocessing
+import json
 import time
 from .eoh_evolution import Evolution
 import warnings
@@ -9,12 +10,27 @@ import re
 from ...utils.timeout_diagnostics import summarize_timeout_records, write_timeout_record
 
 
+def _extract_behavior_from_feedback(feedback: str | None) -> dict | None:
+    """Extract behavior dict from the __BEHAVIOR_JSON__ trailer in feedback string."""
+    if not feedback or not isinstance(feedback, str):
+        return None
+    marker = "__BEHAVIOR_JSON__:"
+    for line in feedback.splitlines():
+        if line.startswith(marker):
+            try:
+                return json.loads(line[len(marker):])
+            except (json.JSONDecodeError, ValueError):
+                return None
+    return None
+
+
 def _empty_offspring():
     return {
         'algorithm': None,
         'code': None,
         'objective': None,
-        'other_inf': None
+        'other_inf': None,
+        'behavior': None
     }
 
 
@@ -254,12 +270,14 @@ class InterfaceEC():
                     'algorithm': seeds[i]['algorithm'],
                     'code': seeds[i]['code'],
                     'objective': None,
-                    'other_inf': None
+                    'other_inf': None,
+                    'behavior': None
                 }
 
                 obj = float(fitness[i])
                 seed_alg['objective'] = float(np.round(obj, 5))
                 seed_alg['other_inf'] = other_infs[i]
+                seed_alg['behavior'] = _extract_behavior_from_feedback(other_infs[i])
                 population.append(seed_alg)
 
             except Exception as e:
@@ -276,7 +294,8 @@ class InterfaceEC():
             'algorithm': None,
             'code': None,
             'objective': None,
-            'other_inf': None
+            'other_inf': None,
+            'behavior': None
         }
         if operator == "i1":
             parents = None
@@ -365,6 +384,7 @@ class InterfaceEC():
 
             offspring['objective'] = float(np.round(float(fitness), 5))
             offspring['other_inf'] = other_inf
+            offspring['behavior'] = _extract_behavior_from_feedback(other_inf)
 
             self._write_timeout_record(
                 self._diagnostic_record(

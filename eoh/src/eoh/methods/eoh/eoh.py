@@ -1,9 +1,11 @@
 import numpy as np
 import json
+import os
 import random
 import time
 
 from .eoh_interface_EC import InterfaceEC
+from ..management import pop_diverse
 # main class for eoh
 class EOH:
 
@@ -63,7 +65,15 @@ class EOH:
 
         self.use_numba = paras.eva_numba_decorator
 
+        # Diversity-aware population management
+        try:
+            self._diversity_weight = float(os.environ.get("EC_DIVERSITY_WEIGHT", "0"))
+        except (TypeError, ValueError):
+            self._diversity_weight = 0.0
+
         print("- EoH parameters loaded -")
+        if self._diversity_weight > 0:
+            print(f"  Diversity-aware pop management enabled (weight={self._diversity_weight})")
 
         # Set a random seed
         random.seed(2024)
@@ -76,6 +86,14 @@ class EOH:
                     if (self.debug_mode):
                         print("duplicated result, retrying ... ")
             population.append(off)
+
+    def _pop_manage(self, population, size):
+        """Route to diverse or greedy population management based on config."""
+        if self._diversity_weight > 0:
+            return pop_diverse.population_management(
+                population, size, diversity_weight=self._diversity_weight
+            )
+        return self.manage.population_management(population, size)
     
 
     # run eoh 
@@ -124,14 +142,14 @@ class EOH:
             else:  # create new population
                 print("creating initial population:")
                 population = interface_ec.population_generation()
-                population = self.manage.population_management(population, self.pop_size)
+                population = self._pop_manage(population, self.pop_size)
 
                 # print(len(population))
                 # if len(population)<self.pop_size:
                 #     for op in [self.operators[0],self.operators[2]]:
                 #         _,new_ind = interface_ec.get_algorithm(population, op)
                 #         self.add2pop(population, new_ind)
-                #         population = self.manage.population_management(population, self.pop_size)
+                #         population = self._pop_manage(population, self.pop_size)
                 #         if len(population) >= self.pop_size:
                 #             break
                 #         print(len(population))
@@ -172,7 +190,7 @@ class EOH:
                 #         json.dump(data, file, indent=5)
                 # populatin management
                 size_act = min(len(population), self.pop_size)
-                population = self.manage.population_management(population, size_act)
+                population = self._pop_manage(population, size_act)
                 print()
 
 

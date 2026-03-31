@@ -184,6 +184,10 @@ class ABRProblem:
         total_bitrate = 0.0
         total_switch = 0.0
         total_steps = 0
+        total_rebuf_chunks = 0  # chunks with any rebuffering
+        total_switch_chunks = 0  # transitions that changed bitrate
+        total_min_bitrate_chunks = 0  # chunks where lowest bitrate was chosen
+        total_utilization = 0.0  # sum of (chosen_bitrate / throughput)
 
         video_count = 0
 
@@ -217,11 +221,25 @@ class ABRProblem:
             )
             total_steps += 1
 
+            # Behavioral descriptor tracking
+            if float(rebuf_s) > 0:
+                total_rebuf_chunks += 1
+            if bit_rate != last_bit_rate:
+                total_switch_chunks += 1
+            if bit_rate == 0:
+                total_min_bitrate_chunks += 1
+
             if delay_ms > self.EPS:
                 throughput_kbps = (float(video_chunk_size_bytes) * 8.0) / float(delay_ms)
             else:
                 throughput_kbps = float(self.video_bit_rates[bit_rate])
             throughput_history.append(throughput_kbps)
+
+            # Track bandwidth utilization
+            if throughput_kbps > self.EPS:
+                total_utilization += float(self.video_bit_rates[bit_rate]) / throughput_kbps
+            else:
+                total_utilization += 0.0
 
             last_bit_rate = bit_rate
             future_chunk_sizes_bytes = self._build_future_chunk_sizes(
@@ -277,6 +295,13 @@ class ABRProblem:
             "mean_bitrate_kbps": float(total_bitrate / total_steps),
             "mean_switch_kbps": float(total_switch / total_steps),
             "max_bitrate_kbps": float(np.max(self.video_bit_rates)),
+            # Behavioral descriptors (4D behavior vector)
+            "behavior_utilization": float(total_utilization / total_steps),
+            "behavior_rebuffer_rate": float(total_rebuf_chunks / total_steps),
+            "behavior_switch_rate": float(
+                total_switch_chunks / max(1, total_steps - video_count)
+            ),
+            "behavior_min_bitrate_frac": float(total_min_bitrate_chunks / total_steps),
         }
         return float(-mean_qoe), metrics
 
