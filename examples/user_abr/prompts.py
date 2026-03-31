@@ -41,7 +41,12 @@ class GetPrompts:
             "Keep the function fast: O(K) or O(K*H) per step when possible; a small fixed-horizon combinatorial search is acceptable if H stays tiny. "
             "If you plan ahead, only use the chunk-size horizon already provided in 'state'. "
             "If your heuristic needs thresholds, safety margins, smoothing factors, or horizons, define them inside the code as local or module constants. "
-            "Do not expect undocumented keys in 'ctx'."
+            "Do not expect undocumented keys in 'ctx'. "
+            "When rebuf_penalty is high relative to max bitrate (e.g., 3G networks where rebuf_penalty=4.3 and max bitrate=4.3 Mbps), "
+            "a single rebuffer second costs as much as choosing max bitrate for one chunk. "
+            "In this regime, avoid extreme conservatism (always picking lowest bitrate) — instead, use buffer level as a confidence signal: "
+            "when buffer is healthy (>10s), it's safe to pick higher bitrates; when buffer is low (<4s), be conservative. "
+            "A good heuristic should be adaptive to network conditions, not uniformly pessimistic."
         )
 
     def get_task(self) -> str:

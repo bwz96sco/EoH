@@ -52,6 +52,14 @@ class Evolution():
         )
 
     @staticmethod
+    def _format_feedback_block(indiv):
+        """Extract other_inf feedback from an individual, return formatted block or empty string."""
+        other_inf = indiv.get("other_inf") if isinstance(indiv, dict) else None
+        if isinstance(other_inf, str) and other_inf.strip():
+            return "\nEvaluation feedback (for guidance):\n" + other_inf.strip() + "\n"
+        return ""
+
+    @staticmethod
     def _extract_algorithm_and_code(response):
         if not isinstance(response, str):
             return [], []
@@ -98,9 +106,13 @@ The description must be inside a brace. Next, implement it in Python as a functi
         for i in range(len(indivs)):
             prompt_indiv=prompt_indiv+"No."+str(i+1) +" algorithm and the corresponding code are: \n" + indivs[i]['algorithm']+"\n" +indivs[i]['code']+"\n"
 
+        # Inject feedback from the best parent (first in the list)
+        feedback = self._format_feedback_block(indivs[0]) if indivs else ""
+
         prompt_content = self.prompt_task+"\n"\
 "I have "+str(len(indivs))+" existing algorithms with their codes as follows: \n"\
 +prompt_indiv+\
+feedback+\
 "Please help me create a new algorithm that has a totally different form from the given ones. \n"\
 "First, describe your new algorithm and main steps in one sentence. \
 The description must be inside a brace. Next, implement it in Python as a function named \
@@ -115,9 +127,13 @@ The description must be inside a brace. Next, implement it in Python as a functi
         for i in range(len(indivs)):
             prompt_indiv=prompt_indiv+"No."+str(i+1) +" algorithm and the corresponding code are: \n" + indivs[i]['algorithm']+"\n" +indivs[i]['code']+"\n"
 
+        # Inject feedback from the best parent (first in the list)
+        feedback = self._format_feedback_block(indivs[0]) if indivs else ""
+
         prompt_content = self.prompt_task+"\n"\
 "I have "+str(len(indivs))+" existing algorithms with their codes as follows: \n"\
 +prompt_indiv+\
+feedback+\
 "Please help me create a new algorithm that has a totally different form from the given ones but can be motivated from them. \n"\
 "Firstly, identify the common backbone idea in the provided algorithms. Secondly, based on the backbone idea describe your new algorithm in one sentence. \
 The description must be inside a brace. Thirdly, implement it in Python as a function named \
@@ -128,10 +144,7 @@ The description must be inside a brace. Thirdly, implement it in Python as a fun
         return prompt_content
     
     def get_prompt_m1(self,indiv1):
-        feedback = ""
-        other_inf = indiv1.get("other_inf")
-        if isinstance(other_inf, str) and other_inf.strip():
-            feedback = "\nEvaluation feedback (for guidance):\n" + other_inf.strip() + "\n"
+        feedback = self._format_feedback_block(indiv1)
 
         prompt_content = (
             self.prompt_task
@@ -166,12 +179,15 @@ The description must be inside a brace. Thirdly, implement it in Python as a fun
         return prompt_content
     
     def get_prompt_m2(self,indiv1):
+        feedback = self._format_feedback_block(indiv1)
+
         prompt_content = self.prompt_task+"\n"\
 "I have one algorithm with its code as follows. \
 Algorithm description: "+indiv1['algorithm']+"\n\
 Code:\n\
-"+indiv1['code']+"\n\
-Please identify the main algorithm parameters and assist me in creating a new algorithm that has a different parameter settings of the score function provided. \n"\
+"+indiv1['code']+"\n"\
++feedback+\
+"Please identify the main algorithm parameters and assist me in creating a new algorithm that has a different parameter settings of the score function provided. \n"\
 "First, describe your new algorithm and main steps in one sentence. \
 The description must be inside a brace. Next, implement it in Python as a function named \
 "+self.prompt_func_name +". This function should accept "+str(len(self.prompt_func_inputs))+" input(s): "\
@@ -181,10 +197,13 @@ The description must be inside a brace. Next, implement it in Python as a functi
         return prompt_content
     
     def get_prompt_m3(self,indiv1):
+        feedback = self._format_feedback_block(indiv1)
+
         prompt_content = "First, you need to identify the main components in the function below. \
 Next, analyze whether any of these components can be overfit to the in-distribution instances. \
 Then, based on your analysis, simplify the components to enhance the generalization to potential out-of-distribution instances. \
 Finally, provide the revised code, keeping the function name, inputs, and outputs unchanged. \n"+indiv1['code']+"\n"\
++feedback\
 +self.prompt_inout_inf+"\n"+"Do not give additional explanations."
         return prompt_content
 

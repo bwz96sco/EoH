@@ -185,6 +185,15 @@ class ABRProblem:
         total_switch = 0.0
         total_steps = 0
 
+        # Per-chunk accumulators for QoE breakdown components
+        total_bitrate_component = 0.0
+        total_rebuffer_component = 0.0
+        total_switch_component = 0.0
+
+        # Per-video QoE for distribution stats
+        per_video_qoe: list[float] = []
+        current_video_reward = 0.0
+
         video_count = 0
 
         while True:
@@ -199,13 +208,14 @@ class ABRProblem:
                 video_chunk_remain,
             ) = env.get_video_chunk(bit_rate)
 
-            reward = (
-                self.video_bit_rates[bit_rate] / 1000.0
-                - self.rebuf_penalty * rebuf_s
-                - self.smooth_penalty
+            bitrate_comp = self.video_bit_rates[bit_rate] / 1000.0
+            rebuffer_comp = self.rebuf_penalty * rebuf_s
+            switch_comp = (
+                self.smooth_penalty
                 * abs(self.video_bit_rates[bit_rate] - self.video_bit_rates[last_bit_rate])
                 / 1000.0
             )
+            reward = bitrate_comp - rebuffer_comp - switch_comp
             if not np.isfinite(reward):
                 return None, None
 
@@ -216,6 +226,11 @@ class ABRProblem:
                 abs(self.video_bit_rates[bit_rate] - self.video_bit_rates[last_bit_rate])
             )
             total_steps += 1
+
+            total_bitrate_component += float(bitrate_comp)
+            total_rebuffer_component += float(rebuffer_comp)
+            total_switch_component += float(switch_comp)
+            current_video_reward += float(reward)
 
             if delay_ms > self.EPS:
                 throughput_kbps = (float(video_chunk_size_bytes) * 8.0) / float(delay_ms)
@@ -259,6 +274,9 @@ class ABRProblem:
             bit_rate = self._sanitize_action(next_bit_rate, last_bit_rate)
 
             if end_of_video:
+                per_video_qoe.append(current_video_reward)
+                current_video_reward = 0.0
+
                 last_bit_rate = self.DEFAULT_QUALITY
                 bit_rate = self.DEFAULT_QUALITY
                 throughput_history.clear()
@@ -271,12 +289,41 @@ class ABRProblem:
             return None, None
 
         mean_qoe = float(total_reward / video_count)
+        max_bitrate_kbps = float(np.max(self.video_bit_rates))
+        mean_bitrate_kbps = float(total_bitrate / total_steps)
+
+        # Per-video QoE distribution stats
+        qoe_arr = np.asarray(per_video_qoe, dtype=np.float64)
+        qoe_std = float(np.std(qoe_arr)) if qoe_arr.size > 1 else 0.0
+        sorted_qoe = np.sort(qoe_arr)
+        n_10pct = max(1, int(len(sorted_qoe) * 0.1))
+        qoe_worst_10pct = float(np.mean(sorted_qoe[:n_10pct]))
+        qoe_best_10pct = float(np.mean(sorted_qoe[-n_10pct:]))
+
+        # Bandwidth utilization
+        mean_utilization = mean_bitrate_kbps / max_bitrate_kbps if max_bitrate_kbps > 0 else 0.0
+
+        # Per-chunk QoE component breakdown (average per chunk)
+        avg_bitrate_comp = total_bitrate_component / total_steps
+        avg_rebuffer_comp = total_rebuffer_component / total_steps
+        avg_switch_comp = total_switch_component / total_steps
+
         metrics = {
             "mean_qoe": mean_qoe,
             "mean_rebuffer_s": float(total_rebuf / total_steps),
-            "mean_bitrate_kbps": float(total_bitrate / total_steps),
+            "mean_bitrate_kbps": mean_bitrate_kbps,
             "mean_switch_kbps": float(total_switch / total_steps),
-            "max_bitrate_kbps": float(np.max(self.video_bit_rates)),
+            "max_bitrate_kbps": max_bitrate_kbps,
+            "rebuf_penalty": self.rebuf_penalty,
+            "qoe_std": qoe_std,
+            "qoe_worst_10pct": qoe_worst_10pct,
+            "qoe_best_10pct": qoe_best_10pct,
+            "mean_utilization": mean_utilization,
+            "qoe_breakdown": {
+                "bitrate_component": avg_bitrate_comp,
+                "rebuffer_component": avg_rebuffer_comp,
+                "switch_component": avg_switch_comp,
+            },
         }
         return float(-mean_qoe), metrics
 
