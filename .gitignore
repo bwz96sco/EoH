@@ -17,3 +17,4 @@ env/
 .gitnexus
 .trellis/tasks/*/*.jsonl
 _backup/
+pylsp/
