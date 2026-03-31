@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 import types
 import warnings
@@ -25,6 +26,11 @@ class ABRProblem:
         "FCC-16", "FCC-18", "Oboe", "Puffer-21", "Puffer-22", "HSR",
         "Norway3G", "Lumos4G", "Lumos5G", "SolisWi-Fi", "Ghent", "Lab",
         "ABRBench-3G", "ABRBench-4G+",
+    )
+
+    VALID_FITNESS_MODES = (
+        "mean", "cvar_25", "cvar_10", "mean_std",
+        "mean_util", "mean_std_util",
     )
 
     def __init__(
@@ -97,6 +103,79 @@ class ABRProblem:
 
         self._sabr_env_module = sabr_env
 
+        # --- Fitness mode configuration (env-var driven) ---
+        self.fitness_mode = os.environ.get("ABR_FITNESS_MODE", "mean")
+        if self.fitness_mode not in self.VALID_FITNESS_MODES:
+            raise ValueError(
+                f"Unknown ABR_FITNESS_MODE '{self.fitness_mode}'. "
+                f"Valid: {', '.join(self.VALID_FITNESS_MODES)}"
+            )
+        self.util_threshold = float(os.environ.get("ABR_UTIL_THRESHOLD", "0.25"))
+        self.util_weight = float(os.environ.get("ABR_UTIL_WEIGHT", "50.0"))
+        self.std_weight = float(os.environ.get("ABR_STD_WEIGHT", "0.5"))
+
+    # ------------------------------------------------------------------
+    # Fitness aggregation
+    # ------------------------------------------------------------------
+    def _aggregate_qoe(
+        self,
+        per_video_qoes: list[float],
+        per_video_utilizations: list[float],
+    ) -> tuple[float, dict[str, float]]:
+        """Aggregate per-video QoE into a single fitness value.
+
+        Returns (fitness, extra_metrics) where fitness is *negated* QoE
+        (lower is better, since EoH minimises).
+        """
+        qoes = np.asarray(per_video_qoes, dtype=np.float64)
+        utils = np.asarray(per_video_utilizations, dtype=np.float64)
+        mode = self.fitness_mode
+        extra: dict[str, float] = {
+            "utilization_mean": float(np.mean(utils)) if utils.size > 0 else 0.0,
+            "fitness_mode": 0.0,  # placeholder; we store the string in metrics later
+        }
+
+        if mode == "mean":
+            agg = float(np.mean(qoes))
+
+        elif mode == "cvar_25":
+            k = max(1, int(np.ceil(0.25 * len(qoes))))
+            agg = float(np.mean(np.sort(qoes)[:k]))
+
+        elif mode == "cvar_10":
+            k = max(1, int(np.ceil(0.10 * len(qoes))))
+            agg = float(np.mean(np.sort(qoes)[:k]))
+
+        elif mode == "mean_std":
+            mean_val = float(np.mean(qoes))
+            std_val = float(np.std(qoes))
+            agg = mean_val - self.std_weight * std_val
+
+        elif mode == "mean_util":
+            base_qoe = float(np.mean(qoes))
+            mean_util = float(np.mean(utils)) if utils.size > 0 else 0.0
+            util_penalty = max(0.0, self.util_threshold - mean_util) * self.util_weight
+            extra["utilization_penalty"] = util_penalty
+            agg = base_qoe - util_penalty
+
+        elif mode == "mean_std_util":
+            mean_val = float(np.mean(qoes))
+            std_val = float(np.std(qoes))
+            norm = max(abs(mean_val), 1.0)
+            variance_penalty = self.std_weight * (std_val / norm)
+
+            mean_util = float(np.mean(utils)) if utils.size > 0 else 0.0
+            util_penalty = max(0.0, self.util_threshold - mean_util) * self.util_weight
+            extra["utilization_penalty"] = util_penalty
+
+            agg = mean_val - variance_penalty - util_penalty
+
+        else:
+            # Should not happen due to __init__ validation, but be safe.
+            agg = float(np.mean(qoes))
+
+        return float(-agg), extra
+
     def _import_sabr_modules(self) -> tuple[Any, Any, Any]:
         config_path = self.sabr_root / "config.py"
         env_path = self.sabr_root / "sim_env" / "fixed_env.py"
@@ -166,7 +245,7 @@ class ABRProblem:
             horizon=self.MPC_FUTURE_CHUNK_COUNT,
         )
 
-    def _simulate(self, score_fn) -> tuple[float | None, dict[str, float] | None]:
+    def _simulate(self, score_fn) -> tuple[float | None, dict[str, Any] | None]:
         env = self._sabr_env_module.Environment(
             all_cooked_time=self.all_cooked_time,
             all_cooked_bw=self.all_cooked_bw,
@@ -186,6 +265,12 @@ class ABRProblem:
         total_steps = 0
 
         video_count = 0
+        per_video_qoes: list[float] = []
+        per_video_utilizations: list[float] = []
+        video_reward = 0.0
+        video_bitrate_sum = 0.0
+        video_steps = 0
+        max_bitrate = float(np.max(self.video_bit_rates))
 
         while True:
             (
@@ -216,6 +301,11 @@ class ABRProblem:
                 abs(self.video_bit_rates[bit_rate] - self.video_bit_rates[last_bit_rate])
             )
             total_steps += 1
+
+            # Per-video accumulators
+            video_reward += float(reward)
+            video_bitrate_sum += float(self.video_bit_rates[bit_rate])
+            video_steps += 1
 
             if delay_ms > self.EPS:
                 throughput_kbps = (float(video_chunk_size_bytes) * 8.0) / float(delay_ms)
@@ -259,6 +349,17 @@ class ABRProblem:
             bit_rate = self._sanitize_action(next_bit_rate, last_bit_rate)
 
             if end_of_video:
+                # Record per-video QoE and utilization
+                per_video_qoes.append(video_reward)
+                if video_steps > 0 and max_bitrate > 0:
+                    video_util = video_bitrate_sum / (video_steps * max_bitrate)
+                else:
+                    video_util = 0.0
+                per_video_utilizations.append(video_util)
+                video_reward = 0.0
+                video_bitrate_sum = 0.0
+                video_steps = 0
+
                 last_bit_rate = self.DEFAULT_QUALITY
                 bit_rate = self.DEFAULT_QUALITY
                 throughput_history.clear()
@@ -270,15 +371,21 @@ class ABRProblem:
         if total_steps <= 0 or video_count <= 0:
             return None, None
 
+        fitness, extra = self._aggregate_qoe(per_video_qoes, per_video_utilizations)
+
         mean_qoe = float(total_reward / video_count)
-        metrics = {
+        metrics: dict[str, Any] = {
             "mean_qoe": mean_qoe,
             "mean_rebuffer_s": float(total_rebuf / total_steps),
             "mean_bitrate_kbps": float(total_bitrate / total_steps),
             "mean_switch_kbps": float(total_switch / total_steps),
             "max_bitrate_kbps": float(np.max(self.video_bit_rates)),
+            "utilization_mean": extra["utilization_mean"],
+            "fitness_mode": self.fitness_mode,
         }
-        return float(-mean_qoe), metrics
+        if "utilization_penalty" in extra:
+            metrics["utilization_penalty"] = extra["utilization_penalty"]
+        return fitness, metrics
 
     def evaluate_with_details(self, code_string: str) -> tuple[float | None, str | None]:
         try:
