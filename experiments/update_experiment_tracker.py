@@ -104,6 +104,12 @@ def parse_args() -> argparse.Namespace:
         default=[],
         help="Restrict update to specific run-id values. By default, scan all canonical runs.",
     )
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Write tracker to this path instead of the default experiment_index.md. "
+             "Useful for generating per-wave tracker files without touching the global one.",
+    )
     return parser.parse_args()
 
 
@@ -602,7 +608,10 @@ def main() -> None:
     args = parse_args()
     run_roots = collect_run_roots(args.run_id)
     records = [discover_run_record(run_root) for run_root in run_roots]
-    tracker_path = build_experiment_tracker_path(REPO_ROOT)
+    if args.output:
+        tracker_path = Path(args.output)
+    else:
+        tracker_path = build_experiment_tracker_path(REPO_ROOT)
     tracker_path.parent.mkdir(parents=True, exist_ok=True)
     tracker_path.write_text(render_tracker(records))
     print(f"Experiment tracker saved to {tracker_path}")

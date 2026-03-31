@@ -290,10 +290,13 @@ finalize_run() {
     log_phase "TRACKER UPDATE"
     if [[ "$ABR_SKIP_TRACKER_UPDATE" == "1" ]]; then
         log_info "Skipping tracker update because ABR_SKIP_TRACKER_UPDATE=1"
-    elif (cd "$REPO_ROOT" && python3 "$TRACKER_SCRIPT"); then
-        log_info "Experiment tracker saved to ${TRACKER_PATH}"
     else
-        log_info "WARNING: experiment tracker update failed"
+        local run_tracker="${RUN_ROOT}/tracker.md"
+        if (cd "$REPO_ROOT" && python3 "$TRACKER_SCRIPT" --run-id "$ABR_RUN_ID" --output "$run_tracker"); then
+            log_info "Per-run tracker saved to ${run_tracker}"
+        else
+            log_info "WARNING: per-run tracker generation failed"
+        fi
     fi
 
     backup_run_artifacts

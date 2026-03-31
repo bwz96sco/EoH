@@ -255,7 +255,7 @@ launch_queue B "$STAGEB_QUEUE"
 log "Stage B complete: ok=$(wc -l < "$STAGEB_OK" | tr -d ' ') fail=$(wc -l < "$STAGEB_FAIL" | tr -d ' ')"
 
 log "Final tracker update begin"
-if python3 experiments/update_experiment_tracker.py >> "$TRACKER_LOG" 2>&1; then
+if python3 experiments/update_experiment_tracker.py --output "$WAVE_ROOT/tracker.md" >> "$TRACKER_LOG" 2>&1; then
     log "Final tracker update ok"
 else
     log "Final tracker update failed"
