@@ -52,8 +52,8 @@ class InterfaceEC():
         self.pop_size = pop_size
         self.interface_eval = interface_prob
         prompts = interface_prob.prompts
-        self.llm_request_timeout_s = max(1, int(kwargs.get("llm_request_timeout_s", 30)))
-        self.llm_total_timeout_s = max(self.llm_request_timeout_s, int(kwargs.get("llm_total_timeout_s", 90)))
+        self.llm_request_timeout_s = max(1, int(kwargs.get("llm_request_timeout_s", 60)))
+        self.llm_total_timeout_s = max(self.llm_request_timeout_s, int(kwargs.get("llm_total_timeout_s", 180)))
         self.timeout_diagnostics_enabled = bool(kwargs.get("timeout_diagnostics_enabled", False))
         self.timeout_diagnostics_path = kwargs.get("timeout_diagnostics_path")
         self.run_id = kwargs.get("run_id")
