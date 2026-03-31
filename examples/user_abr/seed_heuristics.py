@@ -235,6 +235,63 @@ ROBUST_MPC_CODE = textwrap.dedent(
 ).strip()
 
 
+ADAPTIVE_REGIME_CODE = textwrap.dedent(
+    """
+    import numpy as np
+
+    def score(state, ctx):
+        \"\"\"Adaptive regime: detect bandwidth conditions and adjust strategy accordingly.\"\"\"
+        bitrates = np.asarray(ctx.get("bitrates_kbps", []), dtype=float).reshape(-1)
+        k = int(bitrates.size)
+        if k == 0:
+            return np.array([], dtype=float)
+
+        # Throughput estimation: EWMA with alpha=0.3
+        hist_mbps = np.asarray(state.get("throughput_hist_mbps", []), dtype=float)
+        hist_mbps = hist_mbps[np.isfinite(hist_mbps)]
+        if hist_mbps.size == 0:
+            pred_kbps = float(bitrates[0])  # fallback to lowest
+        elif hist_mbps.size == 1:
+            pred_kbps = float(hist_mbps[0]) * 1000.0
+        else:
+            alpha = 0.3
+            ewma = float(hist_mbps[0])
+            for val in hist_mbps[1:]:
+                ewma = alpha * float(val) + (1 - alpha) * ewma
+            pred_kbps = ewma * 1000.0
+
+        buffer_s = float(state.get("buffer_s", 0.0))
+        buffer_max_s = float(ctx.get("buffer_max_s", 60.0))
+        buffer_ratio = buffer_s / max(buffer_max_s, 1.0)
+
+        max_bitrate = float(bitrates[-1])
+        bw_ratio = pred_kbps / max(max_bitrate, 1.0)
+
+        # Regime detection
+        if bw_ratio > 1.5:
+            # HIGH bandwidth: buffer is healthy relative to demand -> be aggressive
+            safety = 0.9
+        elif bw_ratio > 0.8:
+            # MEDIUM bandwidth: can sustain mid-range bitrates -> moderate
+            safety = 0.75 if buffer_ratio > 0.3 else 0.6
+        else:
+            # LOW bandwidth: tight margin -> buffer-adaptive conservatism
+            if buffer_ratio > 0.5:
+                safety = 0.7  # buffer is healthy, can risk a bit
+            elif buffer_ratio > 0.2:
+                safety = 0.5  # moderate buffer, be careful
+            else:
+                safety = 0.3  # low buffer, be very conservative
+
+        safe_bw = pred_kbps * safety
+
+        # Score: prefer highest bitrate under safe bandwidth, penalize overshoot
+        excess = np.maximum(bitrates - safe_bw, 0.0)
+        return bitrates / 1000.0 - 10.0 * (excess / max(safe_bw, 1.0)) ** 2
+    """
+).strip()
+
+
 RATE_BASED_CODE = textwrap.dedent(
     """
     import numpy as np
@@ -275,6 +332,7 @@ _BOLA_MODULE = _load_seed_module("eoh_seed_bola", BOLA_CODE)
 _QUETRA_MODULE = _load_seed_module("eoh_seed_quetra", QUETRA_CODE)
 _ROBUST_MPC_MODULE = _load_seed_module("eoh_seed_robust_mpc", ROBUST_MPC_CODE)
 _RATE_BASED_MODULE = _load_seed_module("eoh_seed_rate_based", RATE_BASED_CODE)
+_ADAPTIVE_REGIME_MODULE = _load_seed_module("eoh_seed_adaptive_regime", ADAPTIVE_REGIME_CODE)
 
 # Export executable helpers from the exact same code text written to seeds.json.
 score_bb = _BB_MODULE.score
@@ -282,6 +340,7 @@ score_bola = _BOLA_MODULE.score
 score_quetra = _QUETRA_MODULE.score
 score_robust_mpc = _ROBUST_MPC_MODULE.score
 score_rate_based = _RATE_BASED_MODULE.score
+score_adaptive_regime = _ADAPTIVE_REGIME_MODULE.score
 _ema = _QUETRA_MODULE._ema
 
 
@@ -310,6 +369,11 @@ SEED_HEURISTICS: Sequence[dict[str, str]] = [
         "name": "rate_based",
         "algorithm": "{Rate-based: use a conservative harmonic-mean bandwidth estimate and strongly penalize bitrates above that budget so the best score stays near the highest sustainable quality}",
         "code": RATE_BASED_CODE,
+    },
+    {
+        "name": "adaptive_regime",
+        "algorithm": "{Adaptive-regime: detect bandwidth regime (high/medium/low relative to max bitrate), use buffer level as confidence signal, and apply regime-specific safety margins — aggressive when bandwidth is plentiful, buffer-adaptive conservatism when bandwidth is tight, never uniformly pessimistic}",
+        "code": ADAPTIVE_REGIME_CODE,
     },
 ]
 
