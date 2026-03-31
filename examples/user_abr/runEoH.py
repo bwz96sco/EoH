@@ -164,6 +164,56 @@ def _expand_seed_population(
     return expanded
 
 
+def _reevaluate_cached_population(
+    cache_file: Path,
+    problem: ABRProblem,
+    fitness_mode: str,
+) -> Path:
+    """Re-evaluate a cached seed population under a different fitness mode.
+
+    When `ABR_FITNESS_MODE` differs from the mode used to compute cached
+    objectives (always 'mean'), offspring evaluated with the new mode would
+    never beat stale seed objectives.  This function re-evaluates each
+    individual's code string through `problem.evaluate_with_details()` (which
+    honours the current `ABR_FITNESS_MODE` env var) and writes the updated
+    population to a temporary file that can be loaded by EoH.
+
+    Returns the *Path* to the re-evaluated population file.
+    """
+    with open(cache_file) as fh:
+        population = json.load(fh)
+
+    for idx, individual in enumerate(population):
+        code_string = individual.get("code", "")
+        if not code_string:
+            continue
+
+        old_obj = individual.get("objective")
+        new_fitness, new_feedback = problem.evaluate_with_details(code_string)
+        if new_fitness is not None:
+            individual["objective"] = new_fitness
+            if new_feedback is not None:
+                individual["other_inf"] = new_feedback
+            print(
+                f"  Seed {idx} ({individual.get('name', '?')}): "
+                f"objective {old_obj} -> {new_fitness}  (mode={fitness_mode})"
+            )
+        else:
+            print(
+                f"  Seed {idx} ({individual.get('name', '?')}): "
+                f"re-evaluation failed, keeping original objective {old_obj}"
+            )
+
+    # Write to a temp file next to the cache so EoH can load it.
+    reeval_dir = cache_file.parent / "_reevaluated"
+    reeval_dir.mkdir(parents=True, exist_ok=True)
+    reeval_file = reeval_dir / f"population_generation_0_{fitness_mode}.json"
+    with open(reeval_file, "w") as fh:
+        json.dump(population, fh, indent=5)
+
+    return reeval_file
+
+
 def main() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     experiments_dir = repo_root / "experiments"
@@ -218,6 +268,15 @@ def main() -> None:
     if use_cache:
         print(f"Using cached seed population: {cache_file}")
 
+    # Re-evaluate cached seed objectives when fitness mode differs from "mean".
+    fitness_mode = os.environ.get("ABR_FITNESS_MODE", "mean").strip().lower()
+    if use_cache and fitness_mode != "mean":
+        print(
+            f"Fitness mode '{fitness_mode}' != 'mean': re-evaluating cached seed objectives..."
+        )
+        cache_file = _reevaluate_cached_population(cache_file, problem, fitness_mode)
+        print(f"Re-evaluated population written to: {cache_file}")
+
     # Seed population via the built-in `exp_use_seed` mechanism.
     temp_seed_dir = (
         Path(__file__).resolve().parent
@@ -257,8 +316,8 @@ def main() -> None:
             exp_timeout_diagnostics=_env_flag("EOH_TIMEOUT_DIAGNOSTICS", default=False),
             exp_timeout_diagnostics_path=str(timeout_diagnostics_path),
             abr_run_id=run_layout.run_id,
-            llm_request_timeout_s=int(os.environ.get("LLM_REQUEST_TIMEOUT_S", "30")),
-            llm_total_timeout_s=int(os.environ.get("LLM_TOTAL_TIMEOUT_S", "90")),
+            llm_request_timeout_s=int(os.environ.get("LLM_REQUEST_TIMEOUT_S", "60")),
+            llm_total_timeout_s=int(os.environ.get("LLM_TOTAL_TIMEOUT_S", "180")),
             eva_numba_decorator=False,
         )
 

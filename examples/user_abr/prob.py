@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 import types
 import warnings
@@ -13,6 +14,47 @@ import numpy as np
 from abr_api import extract_future_chunk_sizes, extract_state, make_ctx
 from feedback import format_feedback
 from prompts import GetPrompts
+
+
+# ---------------------------------------------------------------------------
+# Fitness aggregation modes
+#
+# ABR_FITNESS_MODE env var controls how per-video QoE values are aggregated
+# into a single scalar fitness for EoH minimization.
+#
+#   "mean"     (default)  plain arithmetic mean  (original behaviour)
+#   "cvar_25"             CVaR-25 %: mean of the worst 25 % of per-video QoEs
+#   "cvar_10"             CVaR-10 %: mean of the worst 10 %
+#   "mean_std"            mean - ABR_FITNESS_STD_WEIGHT * std
+# ---------------------------------------------------------------------------
+_FITNESS_MODE = os.environ.get("ABR_FITNESS_MODE", "mean").strip().lower()
+_FITNESS_STD_WEIGHT = float(os.environ.get("ABR_FITNESS_STD_WEIGHT", "1.0"))
+
+
+def _aggregate_qoe(per_video_qoes: np.ndarray, mode: str = _FITNESS_MODE) -> float:
+    """Aggregate a vector of per-video QoE values into a single scalar.
+
+    All modes return a value in "QoE space" (higher is better). The caller
+    negates the result for EoH minimisation.
+    """
+    if per_video_qoes.size == 0:
+        return 0.0
+
+    if mode == "mean":
+        return float(np.mean(per_video_qoes))
+
+    if mode.startswith("cvar_"):
+        alpha_pct = int(mode.split("_", 1)[1])
+        alpha = alpha_pct / 100.0
+        sorted_qoes = np.sort(per_video_qoes)
+        n_worst = max(1, int(np.ceil(len(sorted_qoes) * alpha)))
+        return float(np.mean(sorted_qoes[:n_worst]))
+
+    if mode == "mean_std":
+        return float(np.mean(per_video_qoes) - _FITNESS_STD_WEIGHT * np.std(per_video_qoes))
+
+    # Fallback to mean for unknown modes.
+    return float(np.mean(per_video_qoes))
 
 
 class ABRProblem:
@@ -185,6 +227,11 @@ class ABRProblem:
         total_switch = 0.0
         total_steps = 0
 
+        # Per-video QoE tracking for robust aggregation.
+        video_reward = 0.0
+        video_steps = 0
+        per_video_qoes: list[float] = []
+
         video_count = 0
 
         while True:
@@ -216,6 +263,8 @@ class ABRProblem:
                 abs(self.video_bit_rates[bit_rate] - self.video_bit_rates[last_bit_rate])
             )
             total_steps += 1
+            video_reward += float(reward)
+            video_steps += 1
 
             if delay_ms > self.EPS:
                 throughput_kbps = (float(video_chunk_size_bytes) * 8.0) / float(delay_ms)
@@ -259,6 +308,10 @@ class ABRProblem:
             bit_rate = self._sanitize_action(next_bit_rate, last_bit_rate)
 
             if end_of_video:
+                per_video_qoes.append(video_reward)
+                video_reward = 0.0
+                video_steps = 0
+
                 last_bit_rate = self.DEFAULT_QUALITY
                 bit_rate = self.DEFAULT_QUALITY
                 throughput_history.clear()
@@ -270,6 +323,10 @@ class ABRProblem:
         if total_steps <= 0 or video_count <= 0:
             return None, None
 
+        qoe_array = np.asarray(per_video_qoes, dtype=np.float64)
+        aggregated_qoe = _aggregate_qoe(qoe_array)
+
+        # Metrics still use arithmetic mean for diagnostics.
         mean_qoe = float(total_reward / video_count)
         metrics = {
             "mean_qoe": mean_qoe,
@@ -278,7 +335,14 @@ class ABRProblem:
             "mean_switch_kbps": float(total_switch / total_steps),
             "max_bitrate_kbps": float(np.max(self.video_bit_rates)),
         }
-        return float(-mean_qoe), metrics
+        if _FITNESS_MODE != "mean":
+            metrics["fitness_mode"] = _FITNESS_MODE
+            metrics["aggregated_qoe"] = aggregated_qoe
+            metrics["qoe_std"] = float(np.std(qoe_array))
+            metrics["qoe_worst_10pct"] = float(
+                np.mean(np.sort(qoe_array)[: max(1, int(np.ceil(len(qoe_array) * 0.1)))])
+            )
+        return float(-aggregated_qoe), metrics
 
     def evaluate_with_details(self, code_string: str) -> tuple[float | None, str | None]:
         try:
