@@ -41,7 +41,13 @@ class GetPrompts:
             "Keep the function fast: O(K) or O(K*H) per step when possible; a small fixed-horizon combinatorial search is acceptable if H stays tiny. "
             "If you plan ahead, only use the chunk-size horizon already provided in 'state'. "
             "If your heuristic needs thresholds, safety margins, smoothing factors, or horizons, define them inside the code as local or module constants. "
-            "Do not expect undocumented keys in 'ctx'."
+            "Do not expect undocumented keys in 'ctx'. "
+            "IMPORTANT: This optimization focuses on WORST-CASE trace performance (CVaR-25: mean of the worst 25% of traces), not just average QoE. "
+            "A heuristic that performs decently on ALL traces beats one that is great on easy traces but terrible on hard ones. "
+            "For low-bandwidth scenarios (3G networks where bandwidth is close to max bitrate), avoid being uniformly conservative. "
+            "A good heuristic should be ADAPTIVE: use buffer level as a confidence signal — "
+            "when buffer is healthy (>30% of max), pick higher bitrates; when buffer is low (<15% of max), be conservative. "
+            "The worst strategy is always picking the lowest bitrate — it wastes bandwidth and scores poorly on easier traces."
         )
 
     def get_task(self) -> str:

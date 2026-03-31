@@ -235,6 +235,165 @@ ROBUST_MPC_CODE = textwrap.dedent(
 ).strip()
 
 
+EVOLVED_BEST_CODE = textwrap.dedent(
+    """
+    import numpy as np
+
+    def _ewma(x, alpha=0.3, eps=1e-6):
+        \"\"\"Exponentially weighted moving average on throughput history.\"\"\"
+        x = np.asarray(x, dtype=float).reshape(-1)
+        x = x[np.isfinite(x)]
+        x = x[x > eps]
+        if x.size == 0:
+            return 0.0
+        if x.size == 1:
+            return float(x[0])
+        v = float(x[0])
+        for y in x[1:]:
+            v = (1.0 - alpha) * v + alpha * float(y)
+        return v
+
+    def _harmonic_mean(x, eps=1e-6):
+        x = np.asarray(x, dtype=float).reshape(-1)
+        x = x[np.isfinite(x)]
+        x = x[x > eps]
+        if x.size == 0:
+            return 0.0
+        return float(x.size / np.sum(1.0 / np.maximum(x, eps)))
+
+    def _buffer_adaptive_predict(throughput_hist_mbps, buffer_s, buffer_max_s, eps=1e-6):
+        \"\"\"Buffer-adaptive bandwidth prediction: conservative when buffer is low.\"\"\"
+        hist = np.asarray(throughput_hist_mbps, dtype=float).reshape(-1)
+        hist = hist[np.isfinite(hist)]
+        if hist.size == 0:
+            return 0.0
+
+        # Blend harmonic mean (conservative) with EWMA (responsive)
+        hm = _harmonic_mean(hist[-5:], eps)
+        ewma = _ewma(hist[-5:], alpha=0.3, eps=eps)
+        base_pred = 0.5 * hm + 0.5 * ewma
+
+        # Buffer-adaptive safety factor
+        buffer_ratio = buffer_s / max(buffer_max_s, 1.0)
+        if buffer_ratio > 0.5:
+            safety = 1.0       # aggressive when buffer is healthy
+        elif buffer_ratio > 0.2:
+            safety = 0.7       # moderate
+        else:
+            safety = 0.4       # conservative when buffer is low
+
+        return base_pred * safety
+
+    def _sabr_future_bandwidth(throughput_hist_mbps, eps=1e-6):
+        hist_mbytes_per_s = np.asarray(throughput_hist_mbps, dtype=float).reshape(-1) / 8.0
+        hist_mbytes_per_s = hist_mbytes_per_s[np.isfinite(hist_mbytes_per_s)]
+        if hist_mbytes_per_s.size == 0:
+            return 0.0
+        current_est = _harmonic_mean(hist_mbytes_per_s[-5:], eps)
+        past_errors = []
+        for idx, sample in enumerate(hist_mbytes_per_s):
+            sample = max(float(sample), eps)
+            if idx == 0:
+                past_errors.append(0.0)
+                continue
+            prev_est = _harmonic_mean(hist_mbytes_per_s[max(0, idx - 5):idx], eps)
+            past_errors.append(abs(prev_est - sample) / sample)
+        max_error = max(past_errors[-5:]) if past_errors else 0.0
+        return current_est / (1.0 + max_error)
+
+    def score(state, ctx):
+        \"\"\"Evolved best: buffer-adaptive conservative MPC with EWMA throughput.
+
+        Key insights from evolution:
+        - Harmonic mean + EWMA blended throughput prediction
+        - Buffer-adaptive safety factor: aggressive when buffer healthy, conservative when low
+        - MPC-style horizon search with conservative bandwidth scaling
+        \"\"\"
+        bitrates = np.asarray(ctx.get("bitrates_kbps", []), dtype=float).reshape(-1)
+        k = int(bitrates.size)
+        next_sizes = np.asarray(state.get("next_chunk_sizes_bytes", []), dtype=float).reshape(-1)
+        future_sizes = np.asarray(state.get("future_chunk_sizes_bytes", []), dtype=float)
+        if k == 0:
+            return np.zeros_like(bitrates, dtype=float)
+        if future_sizes.ndim == 1:
+            if future_sizes.size == 0:
+                future_sizes = np.empty((0, k), dtype=float)
+            else:
+                future_sizes = future_sizes.reshape(1, -1)
+        if future_sizes.size == 0 and next_sizes.size == k:
+            future_sizes = next_sizes.reshape(1, -1)
+        if future_sizes.ndim != 2 or future_sizes.shape[1] != k:
+            return np.zeros_like(bitrates, dtype=float)
+
+        horizon = 5
+        buffer_s = float(state.get("buffer_s", 0.0))
+        buffer_max_s = float(ctx.get("buffer_max_s", 60.0))
+        last_idx = int(np.clip(int(state.get("last_bitrate_idx", 0)), 0, k - 1))
+        chunk_len_s = float(ctx.get("chunk_len_s", 4.0))
+        link_rtt_s = float(ctx.get("link_rtt_s", 0.08))
+        rebuf_penalty = float(ctx.get("rebuf_penalty", 4.3))
+        smooth_penalty = float(ctx.get("smooth_penalty", 1.0))
+        horizon = max(0, min(horizon, int(state.get("chunk_remain", horizon)), int(future_sizes.shape[0])))
+        if horizon <= 0:
+            return np.zeros_like(bitrates, dtype=float)
+        future_sizes = future_sizes[:horizon]
+
+        hist_mbps = np.asarray(state.get("throughput_hist_mbps", []), dtype=float)
+
+        # Buffer-adaptive prediction (in MB/s for SABR compatibility)
+        adaptive_pred_mbps = _buffer_adaptive_predict(hist_mbps, buffer_s, buffer_max_s)
+        sabr_pred = _sabr_future_bandwidth(hist_mbps)
+        # Use the more conservative of the two
+        predict_tput = min(adaptive_pred_mbps / 8.0, sabr_pred)
+        predict_tput = max(predict_tput, 1e-6)
+
+        max_reward = -np.inf
+        best_first = 0
+        for combo_idx in range(k ** horizon):
+            combo = []
+            tmp = combo_idx
+            for _ in range(horizon):
+                combo.append(int(tmp % k))
+                tmp //= k
+
+            curr_buffer = buffer_s
+            curr_rebuffer_time = 0.0
+            reward_total = 0.0
+            curr_last_idx = last_idx
+
+            for position in range(horizon):
+                chunk_quality = combo[position]
+                chunk_size = float(future_sizes[position, chunk_quality])
+                download_time = chunk_size / (predict_tput * 1e6) + link_rtt_s
+
+                if curr_buffer < download_time:
+                    curr_rebuffer_time += download_time - curr_buffer
+                    curr_buffer = 0.0
+                else:
+                    curr_buffer -= download_time
+                curr_buffer += chunk_len_s
+
+                reward = (
+                    float(bitrates[chunk_quality]) / 1000.0
+                    - rebuf_penalty * curr_rebuffer_time
+                    - smooth_penalty
+                    * abs(float(bitrates[chunk_quality]) - float(bitrates[curr_last_idx]))
+                    / 1000.0
+                )
+                curr_last_idx = chunk_quality
+                reward_total += reward
+
+            if reward_total >= max_reward:
+                max_reward = reward_total
+                best_first = combo[0]
+
+        scores = np.full(k, -np.inf, dtype=float)
+        scores[best_first] = 0.0
+        return scores
+    """
+).strip()
+
+
 RATE_BASED_CODE = textwrap.dedent(
     """
     import numpy as np
@@ -275,6 +434,7 @@ _BOLA_MODULE = _load_seed_module("eoh_seed_bola", BOLA_CODE)
 _QUETRA_MODULE = _load_seed_module("eoh_seed_quetra", QUETRA_CODE)
 _ROBUST_MPC_MODULE = _load_seed_module("eoh_seed_robust_mpc", ROBUST_MPC_CODE)
 _RATE_BASED_MODULE = _load_seed_module("eoh_seed_rate_based", RATE_BASED_CODE)
+_EVOLVED_BEST_MODULE = _load_seed_module("eoh_seed_evolved_best", EVOLVED_BEST_CODE)
 
 # Export executable helpers from the exact same code text written to seeds.json.
 score_bb = _BB_MODULE.score
@@ -282,6 +442,7 @@ score_bola = _BOLA_MODULE.score
 score_quetra = _QUETRA_MODULE.score
 score_robust_mpc = _ROBUST_MPC_MODULE.score
 score_rate_based = _RATE_BASED_MODULE.score
+score_evolved_best = _EVOLVED_BEST_MODULE.score
 _ema = _QUETRA_MODULE._ema
 
 
@@ -310,6 +471,11 @@ SEED_HEURISTICS: Sequence[dict[str, str]] = [
         "name": "rate_based",
         "algorithm": "{Rate-based: use a conservative harmonic-mean bandwidth estimate and strongly penalize bitrates above that budget so the best score stays near the highest sustainable quality}",
         "code": RATE_BASED_CODE,
+    },
+    {
+        "name": "evolved_best",
+        "algorithm": "{Evolved best: buffer-adaptive conservative MPC that blends harmonic mean with EWMA throughput prediction and adjusts safety factor based on buffer occupancy — aggressive when buffer is healthy, conservative when low — then exhaustively searches a short horizon}",
+        "code": EVOLVED_BEST_CODE,
     },
 ]
 
