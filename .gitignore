@@ -18,3 +18,4 @@ env/
 .trellis/tasks/*/*.jsonl
 _backup/
 pylsp/
+.claude/scheduled_tasks.lock
