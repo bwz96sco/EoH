@@ -146,7 +146,6 @@ done
 
 # ============ Tracker update ============
 log "Final tracker update..."
-WAVE_TRACKER="$LOG_DIR/../tracker.md"
-python3 experiments/update_experiment_tracker.py --output "$WAVE_TRACKER" || log "WARNING: tracker update failed"
+python3 experiments/update_global_tracker.py --scan || log "WARNING: tracker update failed"
 
 log "Wave $WAVE_ID complete. Failed: $FAILED / ${#PIDS[@]+"${#PIDS[@]}"}"

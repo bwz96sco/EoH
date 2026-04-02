@@ -24,8 +24,7 @@ BRIDGE_SCRIPT="${SABR_DIR}/eval_eoh_in_sabr.py"
 COLLECT_SCRIPT="${REPO_ROOT}/experiments/collect_results.py"
 PLOT_SCRIPT="${REPO_ROOT}/experiments/plot_results.py"
 REPORT_SCRIPT="${REPO_ROOT}/experiments/generate_run_report.py"
-TRACKER_SCRIPT="${REPO_ROOT}/experiments/update_experiment_tracker.py"
-TRACKER_PATH="${REPO_ROOT}/experiments/private/experiment_index.md"
+GLOBAL_TRACKER_SCRIPT="${REPO_ROOT}/experiments/update_global_tracker.py"
 BACKUP_CONFIG="${REPO_ROOT}/experiments/private/backup.env"
 CONFIG_PY="${SABR_DIR}/config.py"
 CONFIG_H="${SABR_DIR}/build_env_c_plus/config.h"
@@ -53,14 +52,26 @@ CURRENT_CPP_GROUP=""
 
 # Phase selection (set SKIP_PHASE_N=1 to skip)
 SKIP_PHASE_1="${SKIP_PHASE_1:-0}"
-SKIP_PHASE_2="${SKIP_PHASE_2:-0}"
+SKIP_PHASE_2="${SKIP_PHASE_2-__auto__}"
 SKIP_PHASE_3="${SKIP_PHASE_3:-0}"
 SKIP_PHASE_4="${SKIP_PHASE_4:-0}"
+
+BASELINE_SCHEMES=("bb" "bola" "quetra" "rmpc" "bs" "mfd")
 
 # ---- Helpers ----------------------------------------------------------------
 
 log_info()  { echo ">>> [$(date '+%H:%M:%S')] $*"; }
 log_phase() { echo ""; echo "========== $* =========="; echo ""; }
+
+inplace_sed() {
+    local expr="$1"
+    local file="$2"
+    if sed --version >/dev/null 2>&1; then
+        sed -i -e "$expr" "$file"
+    else
+        sed -i '' -e "$expr" "$file"
+    fi
+}
 
 backup_path_if_present() {
     local local_path="$1"
@@ -121,8 +132,6 @@ backup_run_artifacts() {
 
     backup_path_if_present "$RUN_ROOT" "${ABR_BACKUP_REMOTE%/}/experiments/results/${ABR_RUN_ID}" || \
         log_info "WARNING: failed to back up canonical run root"
-    backup_path_if_present "$TRACKER_PATH" "${ABR_BACKUP_REMOTE%/}/experiments/private/experiment_index.md" || \
-        log_info "WARNING: failed to back up private tracker"
 
     if [[ "$ABR_BACKUP_SEED_CACHE" == "1" ]]; then
         backup_path_if_present "$ABR_EXAMPLE_DIR/seed_cache" "${ABR_BACKUP_REMOTE%/}/examples/user_abr/seed_cache" || \
@@ -214,17 +223,65 @@ cpp_option_for_dataset() {
     esac
 }
 
+baseline_log_exists() {
+    local dataset="$1"
+    local scheme="$2"
+    local dataset_dir="${SABR_DIR}/test_results/${dataset}"
+
+    if [[ ! -d "$dataset_dir" ]]; then
+        return 1
+    fi
+
+    find "$dataset_dir" -maxdepth 1 -type f -name "log_sim_${scheme}*" | grep -q .
+}
+
+dataset_baselines_ready() {
+    local dataset="$1"
+    local scheme
+    for scheme in "${BASELINE_SCHEMES[@]}"; do
+        if ! baseline_log_exists "$dataset" "$scheme"; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+all_baselines_ready() {
+    local ds
+    for ds in "${DATASETS_3G[@]}" "${DATASETS_4G[@]}"; do
+        if ! dataset_baselines_ready "$ds"; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+resolve_phase_2_behavior() {
+    if [[ "$SKIP_PHASE_2" == "1" || "$SKIP_PHASE_2" == "0" ]]; then
+        return 0
+    fi
+
+    if all_baselines_ready; then
+        SKIP_PHASE_2="1"
+        log_info "Phase 2 auto-skip: existing SABR baseline logs are complete"
+        return 0
+    fi
+
+    SKIP_PHASE_2="0"
+    log_info "Phase 2 auto-run: one or more SABR baseline logs are missing"
+}
+
 set_python_dataset() {
     # Set _DATASET in config.py
     local ds="$1"
-    sed -i '' "s/^_DATASET = .*/_DATASET = '${ds}'/" "$CONFIG_PY"
+    inplace_sed "s/^_DATASET = .*/_DATASET = '${ds}'/" "$CONFIG_PY"
     log_info "Python config.py → _DATASET = '${ds}'"
 }
 
 set_cpp_dataset_and_rebuild() {
     # Set DATASET_OPTION in config.h and rebuild C++ env
     local opt="$1"
-    sed -i '' "s/^#define DATASET_OPTION .*/#define DATASET_OPTION ${opt}/" "$CONFIG_H"
+    inplace_sed "s/^#define DATASET_OPTION .*/#define DATASET_OPTION ${opt}/" "$CONFIG_H"
     log_info "C++ config.h → DATASET_OPTION = ${opt}, rebuilding..."
     (cd "${SABR_DIR}/build_env_c_plus" && bash build_all.sh)
     log_info "C++ rebuild complete"
@@ -326,6 +383,16 @@ log_info "Raw outputs: ${RAW_ROOT}"
 log_info "Analysis outputs: ${ANALYSIS_ROOT}"
 log_info "Pipeline log: ${PIPELINE_LOG}"
 
+resolve_phase_2_behavior
+
+# Register experiment in global tracker
+ABR_CAMPAIGN="${ABR_CAMPAIGN:-}"
+python3 "$GLOBAL_TRACKER_SCRIPT" \
+    --register "$ABR_RUN_ID" \
+    --target "ABRBench-3G, ABRBench-4G+" \
+    --campaign "$ABR_CAMPAIGN" \
+    --status running 2>/dev/null || true
+
 finalize_run() {
     local exit_code=$?
     trap - EXIT
@@ -334,11 +401,10 @@ finalize_run() {
     if [[ "$ABR_SKIP_TRACKER_UPDATE" == "1" ]]; then
         log_info "Skipping tracker update because ABR_SKIP_TRACKER_UPDATE=1"
     else
-        local run_tracker="${RUN_ROOT}/tracker.md"
-        if (cd "$REPO_ROOT" && python3 "$TRACKER_SCRIPT" --run-id "$ABR_RUN_ID" --output "$run_tracker"); then
-            log_info "Per-run tracker saved to ${run_tracker}"
+        if (cd "$REPO_ROOT" && python3 "$GLOBAL_TRACKER_SCRIPT" --complete "$ABR_RUN_ID"); then
+            log_info "Global tracker updated for ${ABR_RUN_ID}"
         else
-            log_info "WARNING: per-run tracker generation failed"
+            log_info "WARNING: global tracker update failed"
         fi
     fi
 

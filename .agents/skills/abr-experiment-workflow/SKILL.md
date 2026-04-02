@@ -12,8 +12,48 @@ Use this skill for any ABR experiment task in EoH. The goal is to keep every exp
 - Prefer wrapper scripts under `experiments/`. Do not start with ad hoc direct calls to `examples/user_abr/runEoH.py` unless the user explicitly wants low-level debugging.
 - Treat `experiments/results/<run-id>/` as the canonical output root for experiment artifacts.
 - Treat `examples/user_abr/seed_cache/` as cache-only state, not canonical results.
+- Before starting a new experiment series, register it under `experiments/campaigns/` and record what the campaign is trying to prove, what factors will change, and what runs are planned.
 - Before launching long runs, check `experiments/private/backup.env` and tell the user if remote backup is active.
 - Remember that `env/SABR` is a nested git repo. If a task changes SABR files, report that those changes live outside the top-level git index.
+
+## Experiment Lifecycle
+
+Every experiment follows this lifecycle:
+
+1. **Plan**: Register campaign in `experiments/campaigns/`, define run matrix
+2. **Pre-flight**: Validate environment (see Pre-flight Check)
+3. **Launch**: Start runner script(s) -- auto-registers in global tracker
+4. **Monitor**: Tail logs, check generation progress
+5. **Collect**: Runner auto-generates analysis (CSV, plots, report)
+6. **Record**: Runner auto-updates global tracker; manually update series tracker
+7. **Cleanup**: Remove temporary worktrees if used
+
+## Pre-flight Check
+
+Before launching any experiment:
+
+1. Verify SABR build: `env/SABR/build_env_c_plus/` binary exists and matches source
+2. Verify Python venv: `env/SABR/venv/bin/python` works
+3. Check disk space: `experiments/results/` partition has sufficient free space
+4. Validate `.env`: confirm `ABR_FITNESS_MODE`, LLM API key, and model name are correct
+5. For phase 2: confirm `env/SABR/config.py` and `config.h` are not being written by another process
+6. Check `experiments/private/backup.env` and tell the user if remote backup is active
+
+## Default Workflow
+
+For future ABR experiments, the default flow should be:
+
+1. Campaign registration: add or update a tracker in `experiments/campaigns/` that states the objective, the experimental factor being changed, the expected comparison metric, and the planned run matrix.
+2. Phase 1: run EoH evolution. If there are multiple EoH-only jobs, this is the phase that can be parallelized.
+3. Phase 2: reuse existing SABR baseline logs whenever the required baseline set already exists. Only rerun phase 2 when the baselines are genuinely missing, invalid, or intentionally changed.
+4. Phase 3: evaluate the EoH result on the requested datasets.
+5. Phase 4: collect results, generate plots/report, and refresh trackers.
+
+This means the normal default is not "always run the full legacy pipeline". The normal default is:
+
+- record the campaign first
+- run only the missing phases
+- avoid rerunning shared baseline state when nothing baseline-related changed
 
 ## Choose The Runner
 
@@ -21,9 +61,9 @@ There are three supported runners:
 
 | Workflow | Use when | Command |
 |----------|----------|---------|
-| Standard mixed run | Full baseline + mixed `ABRBench-3G` and `ABRBench-4G+` workflow | `bash experiments/run_experiment.sh` |
+| Standard mixed run | Mixed `ABRBench-3G` and `ABRBench-4G+` workflow in one run id. Prefer `SKIP_PHASE_2=1` when existing baselines can be reused. | `bash experiments/run_experiment.sh` |
 | Single target run | One evolution target, optional custom eval scope, and all concurrent EoH-only studies | `ABR_EOH_DATASET=FCC-18 bash experiments/run_eoh_target_experiment.sh` |
-| Full impact wave | Combined dataset-impact + seed-impact study with Stage-A/Stage-B orchestration | `bash experiments/run_full_impact_wave.sh` |
+| Multi-stage wave | Multi-stage experiments with Stage-A (evolution only) + Stage-B (evaluation + analysis) orchestration | `bash experiments/run_full_impact_wave.sh` |
 
 ## Important Environment Knobs
 
@@ -31,7 +71,9 @@ There are three supported runners:
 
 - `ABR_RUN_ID`: explicit canonical run id. If unset, the workflow generates one.
 - `ABR_RUN_LABEL`: label suffix used when `ABR_RUN_ID` is unset.
+- `ABR_CAMPAIGN`: optional campaign name, auto-registered in global tracker when runner starts.
 - `EC_N_POP`, `EXP_N_PROC`, `EVA_TIMEOUT`: evolution settings.
+- `SKIP_PHASE_1`, `SKIP_PHASE_2`, `SKIP_PHASE_3`, `SKIP_PHASE_4`: explicit phase reuse controls for runners that support them.
 - `ABR_SKIP_TRACKER_UPDATE=1`: skip tracker refresh in this process.
 - `ABR_RECORD_EXPERIMENT=0`: do not back up the run to the canonical remote archive.
 
@@ -103,53 +145,88 @@ For the default dataset-impact matrix, use only datasets with `TRAIN_TRACES` and
 
 Only include those explicitly when you intentionally want OOD training fallback to test traces.
 
-## Tracker Rule
+## Three-Layer Tracking
 
-Two levels of tracking exist:
+### Layer 1: Global Experiment Tracker
 
-### Per-checkout tracker (automatic)
+`experiments/experiments_tracker.md` -- git tracked, the single source of truth for all experiments.
 
-- For a single top-level run, let the runner refresh the tracker normally.
-- For multiple concurrent `run_eoh_target_experiment.sh` jobs, set `ABR_SKIP_TRACKER_UPDATE=1` on each job and run this once after all jobs complete:
+Every experiment is registered here when it starts and updated when it completes. This file lets all agents (Claude, Codex, etc.) see the full experiment history.
+
+Managed by `experiments/update_global_tracker.py`:
 
 ```bash
-python3 experiments/update_experiment_tracker.py
+# Register at start (runners do this automatically)
+python3 experiments/update_global_tracker.py \
+    --register <run-id> --campaign <campaign> --target <dataset> --status running
+
+# Mark complete (runners do this automatically)
+python3 experiments/update_global_tracker.py --complete <run-id>
+
+# Scan results/ for unregistered runs
+python3 experiments/update_global_tracker.py --scan --campaign <campaign>
 ```
 
-This generates `experiments/private/experiment_index.md` — a flat index of all runs in the current checkout.
+### Layer 2: Campaign Series Tracker
 
-### Series tracker (semi-automatic)
+`experiments/campaigns/<series>.md` -- git tracked, one file per research series.
 
-When running a group of related experiments toward a shared objective:
+Before starting a new series, register it in `experiments/campaigns/README.md`.
 
-1. Before starting, add a new entry to `experiments/campaigns/README.md` (the campaign registry).
-2. After all experiments in the series complete, generate the series tracker:
+After experiments complete, generate or update the series tracker:
 
 ```bash
 python3 experiments/update_series_tracker.py \
-  --name "series-name" \
-  --objective "What this series aims to achieve" \
-  --baseline "87.0 (Quetra seed, seed-impact study)" \
-  --metric "ABRBench-3G (avg)" \
-  --run /path/to/run-or-checkout-dir:LabelA \
-  --run /path/to/another-dir:LabelB
+    --name "series-name" \
+    --objective "What this series aims to achieve" \
+    --baseline "87.0 (Quetra seed, seed-impact study)" \
+    --metric "ABRBench-3G (avg)" \
+    --run /path/to/run-dir:LabelA \
+    --run /path/to/another-dir:LabelB
 ```
 
-The script reads `analysis/results_summary.csv` from each run, generates `experiments/campaigns/<name>.md` with data tables, and preserves any manually-written Analysis and Next Steps sections on re-runs.
+The script also copies `results_summary.csv` to `experiments/campaigns/<series>/` for git tracking.
 
-3. Manually fill in the **Analysis** and **Next Steps** sections in the generated tracker.
-4. Update `experiments/campaigns/README.md` with the outcome.
+Manually fill in the **Analysis** and **Next Steps** sections. These are preserved on re-runs.
 
-Series trackers live in `experiments/campaigns/` and are version-controlled (unlike `experiments/private/`).
+### Layer 3: Per-Run Analysis
+
+`experiments/results/<run-id>/analysis/` -- NOT git tracked.
+
+Contains `results_summary.csv`, `run_report.md`, and `plots/`. Generated automatically by phase 4. For full details of a specific experiment, look here.
+
+### Campaign-First Rule
+
+Before starting a new experiment series, create or update a campaign entry in `experiments/campaigns/README.md`.
+
+A campaign record should answer:
+
+- What question the series is trying to answer
+- Which factor is intentionally changed
+- Which factors are held fixed
+- Which run ids or planned run matrix belong to the series
+
+### Tracker Update Rules
+
+- For a single run, the runner auto-updates the global tracker.
+- For multiple concurrent jobs, set `ABR_SKIP_TRACKER_UPDATE=1` on each and run once after all complete:
+
+```bash
+python3 experiments/update_global_tracker.py --scan
+```
+
+- After a series completes, run `update_series_tracker.py` to generate the campaign tracker.
 
 ## Recommended Procedure
 
 1. Classify the request as standard mixed or EoH-only study.
-2. Check whether remote backup is active via `experiments/private/backup.env`.
-3. Use `run_experiment.sh` for the legacy full pipeline, otherwise use `run_eoh_target_experiment.sh`.
-4. For dataset-impact or seed-impact studies, either build an explicit run matrix over `run_eoh_target_experiment.sh` or use `run_full_impact_wave.sh` for the standard combined wave.
-5. If running multiple EoH-only jobs in parallel, keep tracker refresh off during the wave and refresh once at the end.
-6. After completion, report the run ids and relevant paths under `experiments/results/`.
+2. Register or update the campaign under `experiments/campaigns/` before launching runs.
+3. Run pre-flight check.
+4. Decide which phases are actually missing. Reuse phase 2 by default if the needed SABR baseline logs already exist and baseline code/config did not change. `run_experiment.sh` now auto-detects this when `SKIP_PHASE_2` is not explicitly set.
+5. Use `run_experiment.sh` only when you intentionally want the mixed workflow in one run id. Otherwise use `run_eoh_target_experiment.sh`.
+6. For dataset-impact or seed-impact studies, either build an explicit run matrix over `run_eoh_target_experiment.sh` or use `run_full_impact_wave.sh` for the standard combined wave.
+7. If running multiple EoH-only jobs in parallel, keep tracker refresh off during the wave and refresh once at the end.
+8. After completion, verify global tracker is updated. Run series tracker if applicable.
 
 ## Backup Rule
 
@@ -158,9 +235,11 @@ Series trackers live in `experiments/campaigns/` and are version-controlled (unl
 - Runs whose canonical run id includes `smoke` or `probe` do not back up automatically.
 - For any other ad hoc or debug run, set `ABR_RECORD_EXPERIMENT=0`.
 
-## Explicit Run Matrices
+## Multi-Stage Experiments
 
-For EoH-only studies, express the experiment as explicit jobs over `run_eoh_target_experiment.sh`.
+For studies that require multiple evolution runs, express the experiment as explicit jobs over `run_eoh_target_experiment.sh` or use `run_full_impact_wave.sh` for standard combined waves.
+
+The following are common patterns for multi-factor studies.
 
 ### Dataset-impact study
 
@@ -212,6 +291,14 @@ SKIP_PHASE_1=1
 ```
 
 Leave phase 3 and phase 4 enabled so the run writes evaluation logs and analysis into the existing canonical run directory.
+
+If the required SABR baseline logs already exist, also set:
+
+```bash
+SKIP_PHASE_2=1
+```
+
+That is the normal default for reruns that only changed the EoH side.
 
 ## Avoid
 

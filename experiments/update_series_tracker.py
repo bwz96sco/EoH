@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Generate or update a series tracker for a group of related experiments.
+"""Generate or update a campaign tracker for a group of related experiments.
 
 Reads results_summary.csv from each run directory, extracts key metrics,
 and generates a markdown tracker under experiments/campaigns/<name>.md.
 
 Preserves manually-written Analysis and Next Steps sections on update.
+
+In this repo, one campaign may contain multiple experiment runs that all
+serve the same research objective.
 
 Usage:
     python3 experiments/update_series_tracker.py \\
@@ -27,6 +30,7 @@ import argparse
 import csv
 import json
 import re
+import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -362,7 +366,7 @@ def parse_run_arg(arg: str) -> tuple[str, str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Generate or update a series experiment tracker.",
+        description="Generate or update a campaign tracker for a series of related experiment runs.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -380,12 +384,12 @@ Examples:
     parser.add_argument(
         "--name",
         required=True,
-        help="Series name (used as filename: campaigns/<name>.md)",
+        help="Campaign name (used as filename: campaigns/<name>.md)",
     )
     parser.add_argument(
         "--objective",
         default="",
-        help="Series objective description (only used on initial creation)",
+        help="Campaign objective description shared by the experiment series (only used on initial creation)",
     )
     parser.add_argument(
         "--baseline",
@@ -468,6 +472,17 @@ Examples:
 
     output_path.write_text(md)
     print(f"Series tracker saved to {output_path}")
+
+    # Copy results_summary.csv to campaigns/<name>/ for git tracking
+    data_dir = CAMPAIGNS_DIR / args.name
+    data_dir.mkdir(parents=True, exist_ok=True)
+    for rd in run_data:
+        csv_path = find_csv(rd.run_dir)
+        if csv_path and csv_path.is_file():
+            safe_label = rd.label.replace("/", "_").replace(" ", "_").replace(":", "_")
+            dest = data_dir / f"{safe_label}_results_summary.csv"
+            shutil.copy2(csv_path, dest)
+            print(f"Copied CSV: {csv_path.name} -> {dest}")
 
 
 if __name__ == "__main__":

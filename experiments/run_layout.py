@@ -135,7 +135,3 @@ def build_log_path(
     layout = build_run_layout(repo_root, run_id=run_id, run_label=run_label)
     return layout.logs_root / f"{sanitize_component(log_name, 'log')}.log"
 
-
-def build_experiment_tracker_path(repo_root: Path) -> Path:
-    """Return the canonical experiment tracker path."""
-    return repo_root / "experiments" / "private" / "experiment_index.md"

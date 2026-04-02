@@ -28,8 +28,7 @@ BRIDGE_SCRIPT="${SABR_DIR}/eval_eoh_in_sabr.py"
 COLLECT_SCRIPT="${REPO_ROOT}/experiments/collect_results.py"
 PLOT_SCRIPT="${REPO_ROOT}/experiments/plot_results.py"
 REPORT_SCRIPT="${REPO_ROOT}/experiments/generate_run_report.py"
-TRACKER_SCRIPT="${REPO_ROOT}/experiments/update_experiment_tracker.py"
-TRACKER_PATH="${REPO_ROOT}/experiments/private/experiment_index.md"
+GLOBAL_TRACKER_SCRIPT="${REPO_ROOT}/experiments/update_global_tracker.py"
 BACKUP_CONFIG="${REPO_ROOT}/experiments/private/backup.env"
 
 if [[ -f "$BACKUP_CONFIG" ]]; then
@@ -149,8 +148,6 @@ backup_run_artifacts() {
 
     backup_path_if_present "$RUN_ROOT" "${ABR_BACKUP_REMOTE%/}/experiments/results/${ABR_RUN_ID}" || \
         log_info "WARNING: failed to back up canonical run root"
-    backup_path_if_present "$TRACKER_PATH" "${ABR_BACKUP_REMOTE%/}/experiments/private/experiment_index.md" || \
-        log_info "WARNING: failed to back up private tracker"
 
     if [[ "$ABR_BACKUP_SEED_CACHE" == "1" ]]; then
         backup_path_if_present "$ABR_EXAMPLE_DIR/seed_cache" "${ABR_BACKUP_REMOTE%/}/examples/user_abr/seed_cache" || \
@@ -283,6 +280,14 @@ log_info "Raw outputs: ${RAW_ROOT}"
 log_info "Analysis outputs: ${ANALYSIS_ROOT}"
 log_info "Pipeline log: ${PIPELINE_LOG}"
 
+# Register experiment in global tracker
+ABR_CAMPAIGN="${ABR_CAMPAIGN:-}"
+python3 "$GLOBAL_TRACKER_SCRIPT" \
+    --register "$ABR_RUN_ID" \
+    --target "$ABR_EOH_DATASET" \
+    --campaign "$ABR_CAMPAIGN" \
+    --status running 2>/dev/null || true
+
 finalize_run() {
     local exit_code=$?
     trap - EXIT
@@ -291,11 +296,10 @@ finalize_run() {
     if [[ "$ABR_SKIP_TRACKER_UPDATE" == "1" ]]; then
         log_info "Skipping tracker update because ABR_SKIP_TRACKER_UPDATE=1"
     else
-        local run_tracker="${RUN_ROOT}/tracker.md"
-        if (cd "$REPO_ROOT" && python3 "$TRACKER_SCRIPT" --run-id "$ABR_RUN_ID" --output "$run_tracker"); then
-            log_info "Per-run tracker saved to ${run_tracker}"
+        if (cd "$REPO_ROOT" && python3 "$GLOBAL_TRACKER_SCRIPT" --complete "$ABR_RUN_ID"); then
+            log_info "Global tracker updated for ${ABR_RUN_ID}"
         else
-            log_info "WARNING: per-run tracker generation failed"
+            log_info "WARNING: global tracker update failed"
         fi
     fi
 
