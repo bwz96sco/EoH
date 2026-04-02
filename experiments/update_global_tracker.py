@@ -260,6 +260,11 @@ def op_register(
     campaign: str,
     target: str,
     status: str,
+    *,
+    result: str = "",
+    notes: str = "",
+    started: str = "",
+    completed: str = "",
 ) -> list[dict[str, str]]:
     """Register a run or update fields on an existing row."""
     existing = _find_row(rows, run_id)
@@ -272,19 +277,40 @@ def op_register(
             existing["Target"] = target
         if status:
             existing["Status"] = status
+        if result:
+            existing["Key Result"] = result
+        if notes:
+            existing["Notes"] = notes
+        if started:
+            existing["Started"] = started
+        if completed:
+            existing["Completed"] = completed
         return rows
 
     row = _empty_row(run_id)
     row["Campaign"] = campaign
     row["Target"] = target
     row["Status"] = status
-    row["Started"] = _started_date(run_id)
+    row["Started"] = started or _started_date(run_id)
+    if completed:
+        row["Completed"] = completed
+    if result:
+        row["Key Result"] = result
+    if notes:
+        row["Notes"] = notes
     rows.append(row)
     print(f"Registered: {run_id} (status={status})")
     return rows
 
 
-def op_complete(rows: list[dict[str, str]], run_id: str) -> list[dict[str, str]]:
+def op_complete(
+    rows: list[dict[str, str]],
+    run_id: str,
+    *,
+    result: str = "",
+    notes: str = "",
+    completed_date: str = "",
+) -> list[dict[str, str]]:
     """Mark a run as completed and auto-populate results."""
     row = _find_row(rows, run_id)
     if row is None:
@@ -294,12 +320,19 @@ def op_complete(rows: list[dict[str, str]], run_id: str) -> list[dict[str, str]]
         assert row is not None
 
     row["Status"] = "completed"
-    row["Completed"] = date.today().isoformat()
+    row["Completed"] = completed_date or date.today().isoformat()
 
-    # Auto-populate Key Result
-    key_result = extract_key_result(run_id)
-    if key_result:
-        row["Key Result"] = key_result
+    # Manual result takes priority over auto-extraction
+    if result:
+        row["Key Result"] = result
+    else:
+        key_result = extract_key_result(run_id)
+        if key_result:
+            row["Key Result"] = key_result
+
+    # Manual notes take priority
+    if notes:
+        row["Notes"] = notes
 
     # Auto-populate Target if empty
     if not row.get("Target"):
@@ -404,6 +437,13 @@ def build_parser() -> argparse.ArgumentParser:
             "\n"
             "  # Scan results/ for new runs\n"
             "  python3 experiments/update_global_tracker.py --scan --campaign my-campaign\n"
+            "\n"
+            "  # Register a remote experiment with manual results\n"
+            "  python3 experiments/update_global_tracker.py \\\n"
+            "      --register 20260331-my-remote-run \\\n"
+            '      --campaign my-campaign --target ABRBench-3G --status completed \\\n'
+            '      --result "3G:86.5" --notes "description" \\\n'
+            "      --started 2026-03-31 --completed 2026-03-31\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -445,6 +485,26 @@ def build_parser() -> argparse.ArgumentParser:
         default="running",
         help="Initial status (used with --register, default: running).",
     )
+    parser.add_argument(
+        "--result",
+        default="",
+        help="Manual key result string, e.g. '3G:86.5' (for remote experiments).",
+    )
+    parser.add_argument(
+        "--notes",
+        default="",
+        help="Manual notes (for remote experiments).",
+    )
+    parser.add_argument(
+        "--started",
+        default="",
+        help="Manual start date YYYY-MM-DD (for remote experiments).",
+    )
+    parser.add_argument(
+        "--completed",
+        default="",
+        help="Manual completion date YYYY-MM-DD (for remote experiments).",
+    )
 
     return parser
 
@@ -457,9 +517,17 @@ def main() -> None:
     rows = parse_tracker(TRACKER_PATH)
 
     if args.register:
-        rows = op_register(rows, args.register, args.campaign, args.target, args.status)
+        rows = op_register(
+            rows, args.register, args.campaign, args.target, args.status,
+            result=args.result, notes=args.notes,
+            started=args.started, completed=args.completed,
+        )
     elif args.complete:
-        rows = op_complete(rows, args.complete)
+        rows = op_complete(
+            rows, args.complete,
+            result=args.result, notes=args.notes,
+            completed_date=args.completed,
+        )
     elif args.fail:
         rows = op_fail(rows, args.fail)
     elif args.scan:

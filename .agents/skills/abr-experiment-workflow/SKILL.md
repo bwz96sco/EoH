@@ -16,6 +16,24 @@ Use this skill for any ABR experiment task in EoH. The goal is to keep every exp
 - Before launching long runs, check `experiments/private/backup.env` and tell the user if remote backup is active.
 - Remember that `env/SABR` is a nested git repo. If a task changes SABR files, report that those changes live outside the top-level git index.
 
+## Worktree / Branch Discipline
+
+When exploring code changes for experiments (new fitness modes, prompt modifications, population management changes, feedback enhancements, etc.), always work in a **git worktree** or a **new branch**.
+
+- Create the worktree or branch BEFORE making any code modifications.
+- Name it after the experiment: `experiment/<campaign>-<variant>` (e.g., `experiment/3g-cvar-single-seed`).
+- Run the experiment from that worktree/branch checkout.
+- Only merge back to the primary branch after results confirm the change is worth keeping.
+- If results show no improvement, archive or delete the worktree/branch without polluting the main checkout.
+
+This ensures:
+1. The main checkout stays clean, runnable, and reproducible.
+2. Multiple experimental code variants can coexist and run in parallel.
+3. Failed experiments do not leave dead code behind.
+4. Each experiment's code state is reproducible from its git ref.
+
+For remote servers: push the branch, clone or pull it on the server, and run from there. Results can be tracked via the global tracker regardless of which checkout produced them.
+
 ## Experiment Lifecycle
 
 Every experiment follows this lifecycle:
@@ -153,6 +171,8 @@ Only include those explicitly when you intentionally want OOD training fallback 
 
 Every experiment is registered here when it starts and updated when it completes. This file lets all agents (Claude, Codex, etc.) see the full experiment history.
 
+**Registration rule**: Every experiment MUST be registered in the global tracker at the moment it starts, BEFORE Phase 1 begins, with `--status running`. Do NOT register experiments retroactively after completion. The runner scripts do this automatically; for manual or remote runs, call `--register` explicitly before launching.
+
 Managed by `experiments/update_global_tracker.py`:
 
 ```bash
@@ -234,6 +254,25 @@ python3 experiments/update_global_tracker.py --scan
 - Partial runs with `SKIP_PHASE_3=1` or `SKIP_PHASE_4=1` do not back up automatically.
 - Runs whose canonical run id includes `smoke` or `probe` do not back up automatically.
 - For any other ad hoc or debug run, set `ABR_RECORD_EXPERIMENT=0`.
+
+## Remote / Off-Site Experiments
+
+When experiments run on remote servers (GPU clusters, VAST.ai, etc.) or in checkouts that are not the primary local repo:
+
+1. **Push first**: Ensure the remote checkout has the latest `experiments/update_global_tracker.py` and `experiments/experiments_tracker.md`. Push to the shared branch before starting remote runs.
+2. **Auto-tracking**: If the runner script calls `--register` and `--complete` automatically, the tracker is updated on the remote. Pull the tracker file after the run completes.
+3. **Manual registration**: If the remote checkout does NOT have the tracker infrastructure, or the experiment was run ad hoc, register manually after the run:
+
+```bash
+python3 experiments/update_global_tracker.py \
+    --register <run-id> \
+    --campaign <campaign> --target <dataset> --status completed \
+    --result "3G:XX.X" --notes "description" \
+    --started YYYY-MM-DD --completed YYYY-MM-DD
+```
+
+4. **Autonomous agents**: Codex or other agents running experiments remotely MUST push tracker updates to the shared branch so other agents can see what ran. Set `ABR_CAMPAIGN` so the run is associated with the correct campaign.
+5. **Result retrieval**: After remote runs complete, either copy `results_summary.csv` to the local `experiments/results/<run-id>/analysis/` or use the `--result` flag to manually record the key metric.
 
 ## Multi-Stage Experiments
 
