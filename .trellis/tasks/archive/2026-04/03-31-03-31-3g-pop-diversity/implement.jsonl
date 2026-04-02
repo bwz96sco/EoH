@@ -1,0 +1,4 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": "eoh/src/eoh/methods/management/pop_greedy.py", "reason": "Replace exact objective dedup with behavior-based diversity; add crowding distance"}
+{"file": "examples/user_abr/prob.py", "reason": "Return behavioral descriptor (bitrate decision profile) alongside fitness"}

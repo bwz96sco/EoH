@@ -1,0 +1,45 @@
+{
+  "id": "03-31-3g-fitness-constraint",
+  "name": "03-31-3g-fitness-constraint",
+  "title": "Anti-conservatism fitness constraint for 3G",
+  "description": "",
+  "status": "completed",
+  "dev_type": "backend",
+  "scope": "examples/user_abr",
+  "package": null,
+  "priority": "P2",
+  "creator": "ZhangBowen",
+  "assignee": "ZhangBowen",
+  "createdAt": "2026-03-31",
+  "completedAt": "2026-04-02",
+  "branch": "experiment/3g-fitness-constraint",
+  "base_branch": "abr-remote-repro-20260328",
+  "worktree_path": "/Users/zhangbowen/Projects/trellis-worktrees/experiment/3g-fitness-constraint",
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

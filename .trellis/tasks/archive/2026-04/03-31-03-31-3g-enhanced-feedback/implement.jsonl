@@ -1,0 +1,5 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": "examples/user_abr/feedback.py", "reason": "Primary target: enhance feedback with per-trace QoE distribution, bandwidth utilization, 3G-specific diagnostics"}
+{"file": "examples/user_abr/prompts.py", "reason": "Add 3G network characteristics to prompt_task and prompt_other_inf"}
+{"file": "eoh/src/eoh/methods/eoh/eoh_evolution.py", "reason": "Inject feedback into m2, m3, e1, e2 operators (currently only m1)"}

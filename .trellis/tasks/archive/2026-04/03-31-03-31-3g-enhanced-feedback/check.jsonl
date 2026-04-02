@@ -1,0 +1,4 @@
+{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
+{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
+{"file": "examples/user_abr/prob.py", "reason": "Verify _simulate() returns enough metrics for enhanced feedback"}
+{"file": ".codex/skills/abr-experiment-workflow/SKILL.md", "reason": "Follow experiment workflow conventions"}

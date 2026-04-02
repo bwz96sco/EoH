@@ -1,0 +1,10 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": "examples/user_abr/runEoH.py", "reason": "Main experiment runner - needs pop_size/fitness config changes"}
+{"file": "examples/user_abr/prob.py", "reason": "Fitness aggregation - CVaR mode, metrics, evaluation"}
+{"file": "examples/user_abr/seed_heuristics.py", "reason": "Seed heuristic definitions - may need new adaptive seed"}
+{"file": "examples/user_abr/feedback.py", "reason": "Feedback diagnostics - evaluation summary formatting"}
+{"file": "examples/user_abr/prompts.py", "reason": "Prompt definitions - task/IO/other_inf for LLM"}
+{"file": "examples/user_abr/.env", "reason": "Environment variables for LLM and experiment configuration"}
+{"file": "eoh/src/eoh/utils/getParas.py", "reason": "Parameter class - understand what paras.set_paras accepts"}
+{"file": ".trellis/spec/guides/extending-eoh.md", "reason": "Guide for extending EoH experiments"}

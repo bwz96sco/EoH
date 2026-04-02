@@ -1,0 +1,5 @@
+{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
+{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Review Python/script changes against backend quality guidance"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Review print-based experiment logging output"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Review reused path/layout helpers and avoid duplicated experiment logic"}

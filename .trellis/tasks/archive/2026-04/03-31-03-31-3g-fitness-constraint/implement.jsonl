@@ -1,0 +1,4 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": "examples/user_abr/prob.py", "reason": "Add anti-conservatism constraint to fitness: penalize mean_bitrate < threshold * max_achievable"}
+{"file": "examples/user_abr/feedback.py", "reason": "Include fitness mode info and utilization metrics in feedback"}
