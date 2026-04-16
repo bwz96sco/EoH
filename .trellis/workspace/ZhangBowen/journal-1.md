@@ -137,3 +137,47 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Archive completed 3G experiment tasks
+
+**Date**: 2026-04-16
+**Task**: Archive completed 3G experiment tasks
+**Branch**: `abr-remote-repro-20260328`
+
+### Summary
+
+Archived completed 3G validation and seed-round2 tasks; island experiment remains in progress and business files are still uncommitted.
+
+### Main Changes
+
+| Area | Status |
+|------|--------|
+| 3G validation round1 | Archived as a completed negative-result campaign |
+| 3G seed round2 | Archived as a completed screening campaign |
+| Active Trellis tasks | Cleared; no active tasks remain |
+| 3G island round1 | Still running remotely on heyun; not archived |
+
+**Notes**:
+- `04-06-3g-validation-round1` and `04-12-3g-seed-round2` were archived under `.trellis/tasks/archive/2026-04/`.
+- The repository working tree is still dirty with experiment/code changes outside `.trellis/`; this record only captures session bookkeeping, not a clean business-code checkpoint.
+- Remote `grok2api` cutover and the restarted island run were intentionally left as ongoing work rather than closed tasks.
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d6365b9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
