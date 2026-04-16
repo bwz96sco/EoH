@@ -1,0 +1,45 @@
+{
+  "id": "3g-seed-round2",
+  "name": "3g-seed-round2",
+  "title": "3G seed round2",
+  "description": "",
+  "status": "completed",
+  "dev_type": "backend",
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "ZhangBowen",
+  "assignee": "ZhangBowen",
+  "createdAt": "2026-04-12",
+  "completedAt": "2026-04-16",
+  "branch": null,
+  "base_branch": "abr-remote-repro-20260328",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

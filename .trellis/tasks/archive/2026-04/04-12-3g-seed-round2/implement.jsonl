@@ -1,0 +1,7 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "ABR experiments are file-backed and campaign/results layout must stay canonical"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Seed screening should preserve print-based runtime behavior and canonical diagnostics"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "New seed code must keep None-safe evaluation behavior"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Seed registry changes touch prompts, runEoH selection, cache, and screening workflow"}
+{"file": ".trellis/spec/guides/cross-platform-thinking-guide.md", "reason": "Remote screening on heyun depends on path and process portability"}

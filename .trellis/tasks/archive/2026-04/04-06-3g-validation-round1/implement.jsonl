@@ -1,0 +1,7 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "canonical experiment outputs and cache rules"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "timeout and None propagation in evaluation"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "print/jsonl diagnostics style"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "fitness and runner changes cross config/eval/persistence"}
+{"file": ".trellis/spec/guides/cross-platform-thinking-guide.md", "reason": "remote runner and multiprocessing/path concerns"}

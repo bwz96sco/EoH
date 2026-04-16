@@ -1,0 +1,6 @@
+{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
+{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "canonical output verification"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "error/timeout behavior review"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "cross-layer verification"}
+{"file": ".trellis/spec/guides/cross-platform-thinking-guide.md", "reason": "remote portability verification"}
