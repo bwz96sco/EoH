@@ -22,6 +22,9 @@ class InterfaceAPI:
         self.n_trial = 5
         self.request_timeout_s = max(1, int(request_timeout_s))
         self.total_timeout_s = max(self.request_timeout_s, int(total_timeout_s))
+        self._parsed_endpoint_cache = self._parsed_endpoint()
+        self._request_path_cache = self._build_request_path(self._parsed_endpoint_cache)
+        self._connection = None
         self.last_request_meta = {
             "status": "not_started",
             "attempts": 0,
@@ -44,6 +47,7 @@ class InterfaceAPI:
             "Authorization": "Bearer " + self.api_key,
             "User-Agent": "Apifox/1.0.0 (https://apifox.com)",
             "Content-Type": "application/json",
+            "Connection": "keep-alive",
             "x-api2d-no-cache": 1,
         }
 
@@ -62,10 +66,14 @@ class InterfaceAPI:
 
             attempt_start = time.monotonic()
             try:
-                conn = self._make_connection()
-                conn.request("POST", self._request_path(), payload_explanation, headers)
+                conn = self._get_connection()
+                conn.request("POST", self._request_path_cache, payload_explanation, headers)
                 res = conn.getresponse()
                 data = res.read()
+                if res.status >= 400:
+                    raise RuntimeError(
+                        f"HTTP {res.status} from LLM API. Body: {data[:500]}"
+                    )
                 json_data = json.loads(data)
                 if "choices" not in json_data:
                     raise KeyError(
@@ -82,6 +90,7 @@ class InterfaceAPI:
                 }
                 break
             except Exception as e:
+                self._reset_connection()
                 error_type = type(e).__name__
                 is_timeout = isinstance(e, (TimeoutError, socket.timeout))
                 self.last_request_meta = {
@@ -110,15 +119,31 @@ class InterfaceAPI:
             endpoint = f"https://{endpoint}"
         return urlparse(endpoint)
 
+    def _get_connection(self):
+        if self._connection is None:
+            self._connection = self._make_connection()
+        return self._connection
+
+    def _reset_connection(self):
+        if self._connection is None:
+            return
+        try:
+            self._connection.close()
+        except Exception:
+            pass
+        self._connection = None
+
     def _make_connection(self):
-        parsed = self._parsed_endpoint()
+        parsed = self._parsed_endpoint_cache
         host = parsed.netloc or parsed.path
         if parsed.scheme == "http":
             return http.client.HTTPConnection(host, timeout=self.request_timeout_s)
         return http.client.HTTPSConnection(host, timeout=self.request_timeout_s)
 
     def _request_path(self):
-        parsed = self._parsed_endpoint()
+        return self._request_path_cache
+
+    def _build_request_path(self, parsed):
         base_path = parsed.path.rstrip("/")
         if not base_path:
             return "/v1/chat/completions"
