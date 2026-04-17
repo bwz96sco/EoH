@@ -13,8 +13,10 @@ Use this skill for any ABR experiment task in EoH. The goal is to keep every exp
 - Treat `experiments/results/<run-id>/` as the canonical output root for experiment artifacts.
 - Treat `examples/user_abr/seed_cache/` as cache-only state, not canonical results.
 - Before starting a new experiment series, register it under `experiments/campaigns/` and record what the campaign is trying to prove, what factors will change, and what runs are planned.
+- For every changed experiment attempt inside a campaign, record a short `Key Change` note so the tracker shows exactly what changed relative to the series baseline or sibling runs.
 - Before launching long runs, check `experiments/private/backup.env` and tell the user if remote backup is active.
 - Remember that `env/SABR` is a nested git repo. If a task changes SABR files, report that those changes live outside the top-level git index.
+- Keep campaign and tracker records in sync with the primary local repo checkout. Worktrees, branches, and remote checkouts may isolate code changes and runtime artifacts, but `experiments/campaigns/` and `experiments/experiments_tracker.md` should be updated in the main checkout as the shared source of truth.
 
 ## Worktree / Branch Discipline
 
@@ -34,6 +36,12 @@ This ensures:
 
 For remote servers: push the branch, clone or pull it on the server, and run from there. Results can be tracked via the global tracker regardless of which checkout produced them.
 
+Important distinction:
+
+- **Isolate code changes** in worktrees / branches / remote experiment checkouts.
+- **Do not isolate bookkeeping**. Campaign registration and tracker updates belong in the primary local repo so later sessions do not lose the experiment narrative.
+- Every changed run in a campaign should carry a `Key Change` summary in the series tracker. If you regenerate the tracker, preserve or re-supply those summaries rather than letting them disappear.
+
 ## Experiment Lifecycle
 
 Every experiment follows this lifecycle:
@@ -43,7 +51,7 @@ Every experiment follows this lifecycle:
 3. **Launch**: Start runner script(s) -- auto-registers in global tracker
 4. **Monitor**: Tail logs, check generation progress
 5. **Collect**: Runner auto-generates analysis (CSV, plots, report)
-6. **Record**: Runner auto-updates global tracker; manually update series tracker
+6. **Record**: Runner auto-updates global tracker; manually update series tracker in the main local checkout
 7. **Cleanup**: Remove temporary worktrees if used
 
 ## Pre-flight Check
@@ -218,6 +226,8 @@ Contains `results_summary.csv`, `run_report.md`, and `plots/`. Generated automat
 ### Campaign-First Rule
 
 Before starting a new experiment series, create or update a campaign entry in `experiments/campaigns/README.md`.
+
+Even when the experiment will run from a worktree or a remote clone, do this registration in the main local checkout first.
 
 A campaign record should answer:
 
