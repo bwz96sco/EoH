@@ -51,21 +51,45 @@ def run_script(script_path: Path) -> str:
         return "No context available"
 
 
+def _normalize_task_ref(task_ref: str) -> str:
+    normalized = task_ref.strip()
+    if not normalized:
+        return ""
+
+    path_obj = Path(normalized)
+    if path_obj.is_absolute():
+        return str(path_obj)
+
+    normalized = normalized.replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+
+    if normalized.startswith("tasks/"):
+        return f".trellis/{normalized}"
+
+    return normalized
+
+
+def _resolve_task_dir(trellis_dir: Path, task_ref: str) -> Path:
+    normalized = _normalize_task_ref(task_ref)
+    path_obj = Path(normalized)
+    if path_obj.is_absolute():
+        return path_obj
+    if normalized.startswith(".trellis/"):
+        return trellis_dir.parent / path_obj
+    return trellis_dir / "tasks" / path_obj
+
+
 def _get_task_status(trellis_dir: Path) -> str:
     current_task_file = trellis_dir / ".current-task"
     if not current_task_file.is_file():
         return "Status: NO ACTIVE TASK\nNext: Describe what you want to work on"
 
-    task_ref = current_task_file.read_text(encoding="utf-8").strip()
+    task_ref = _normalize_task_ref(current_task_file.read_text(encoding="utf-8").strip())
     if not task_ref:
         return "Status: NO ACTIVE TASK\nNext: Describe what you want to work on"
 
-    if Path(task_ref).is_absolute():
-        task_dir = Path(task_ref)
-    elif task_ref.startswith(".trellis/"):
-        task_dir = trellis_dir.parent / task_ref
-    else:
-        task_dir = trellis_dir / "tasks" / task_ref
+    task_dir = _resolve_task_dir(trellis_dir, task_ref)
     if not task_dir.is_dir():
         return f"Status: STALE POINTER\nTask: {task_ref}\nNext: Task directory not found. Run: python3 ./.trellis/scripts/task.py finish"
 
@@ -101,6 +125,32 @@ def _get_task_status(trellis_dir: Path) -> str:
     return f"Status: READY\nTask: {task_title}\nNext: Continue with implement or check"
 
 
+def _build_workflow_toc(workflow_path: Path) -> str:
+    """Build a compact section index for workflow.md (lazy-load the full file on demand).
+
+    Replaces full-file injection to keep additionalContext payload small.
+    The full file is accessible via: Read tool on .trellis/workflow.md
+    """
+    content = read_file(workflow_path)
+    if not content:
+        return "No workflow.md found"
+
+    toc_lines = [
+        "# Development Workflow — Section Index",
+        "Full guide: .trellis/workflow.md  (read on demand)",
+        "",
+    ]
+    for line in content.splitlines():
+        if line.startswith("## "):
+            toc_lines.append(line)
+
+    toc_lines += [
+        "",
+        "To read a section: use the Read tool on .trellis/workflow.md",
+    ]
+    return "\n".join(toc_lines)
+
+
 def main() -> None:
     if should_skip_injection():
         sys.exit(0)
@@ -113,7 +163,6 @@ def main() -> None:
         project_dir = Path(".").resolve()
 
     trellis_dir = project_dir / ".trellis"
-    codex_dir = project_dir / ".codex"
 
     output = StringIO()
 
@@ -130,8 +179,7 @@ Read and follow all instructions below carefully.
     output.write("\n</current-state>\n\n")
 
     output.write("<workflow>\n")
-    workflow_content = read_file(trellis_dir / "workflow.md", "No workflow.md found")
-    output.write(workflow_content)
+    output.write(_build_workflow_toc(trellis_dir / "workflow.md"))
     output.write("\n</workflow>\n\n")
 
     output.write("<guidelines>\n")
@@ -169,21 +217,12 @@ Read and follow all instructions below carefully.
 
     output.write("</guidelines>\n\n")
 
-    # Inject start skill as instructions (Codex uses skills, not slash commands)
-    start_skill = codex_dir / "skills" / "start" / "SKILL.md"
-    if not start_skill.is_file():
-        start_skill = project_dir / ".agents" / "skills" / "start" / "SKILL.md"
-    if start_skill.is_file():
-        output.write("<instructions>\n")
-        output.write(read_file(start_skill))
-        output.write("\n</instructions>\n\n")
-
     task_status = _get_task_status(trellis_dir)
     output.write(f"<task-status>\n{task_status}\n</task-status>\n\n")
 
     output.write("""<ready>
-Context loaded. Steps 1-3 (workflow, context, guidelines) are already injected above — do NOT re-read them.
-Start from Step 4. Wait for user's first message, then follow <instructions> to handle their request.
+Context loaded. Workflow index, project state, and guidelines are already injected above — do NOT re-read them.
+Wait for the user's first message, then handle it following the workflow guide.
 If there is an active task, ask whether to continue it.
 </ready>""")
 

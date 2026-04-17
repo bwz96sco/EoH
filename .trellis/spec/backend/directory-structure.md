@@ -15,7 +15,9 @@ EoH is a Python package using `setuptools` with the source root at `eoh/src/`. T
 ```
 EoH/
 ├── pyproject.toml          # Build config (setuptools, Python >=3.10)
-├── CLAUDE.md               # AI assistant instructions
+├── AGENTS.md               # Canonical AI assistant instructions
+├── CLAUDE.md               # Optional Claude compatibility shim
+├── .claude/                # Claude Code config, Trellis hooks, platform commands
 ├── eoh/                    # Core package
 │   ├── setup.py            # Legacy setup.py (duplicates pyproject.toml)
 │   └── src/eoh/            # Installable package source

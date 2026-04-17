@@ -19,3 +19,5 @@ env/
 _backup/
 pylsp/
 .claude/scheduled_tasks.lock
+.session-id
+.agent-log
