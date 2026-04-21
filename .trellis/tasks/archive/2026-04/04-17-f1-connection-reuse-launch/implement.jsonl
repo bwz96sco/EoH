@@ -1,0 +1,6 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "This change crosses shared LLM client behavior, experiment wrapper env knobs, and remote run outputs."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Need minimal, typed Python changes in shared LLM client and isolated experimental seed code."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Experiment launch should keep print-based status concise and readable."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Connection reuse sync and remote F1 launch change file-backed experiment and client runtime behavior."}

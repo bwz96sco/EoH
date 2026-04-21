@@ -1,0 +1,6 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Changing copied CSV layout crosses script output paths and campaign documentation references."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Tracker generator prints file copy paths and should keep concise runtime output."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "New path helper changes should stay minimal and typed consistently in Python."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Campaign CSV copy path changes are file-backed persistence layout work."}

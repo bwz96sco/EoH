@@ -1,0 +1,5 @@
+{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
+{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Review minimal path/layout changes and affected references."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Verify copied CSVs move to a dedicated file-backed directory without changing canonical run outputs."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Validate campaign docs stay aligned with the new copied CSV location."}

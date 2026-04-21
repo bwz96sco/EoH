@@ -1,9 +1,9 @@
 {
-  "id": "campaign-csv-layout-cleanup",
-  "name": "campaign-csv-layout-cleanup",
-  "title": "Campaign CSV Layout Cleanup",
+  "id": "f1-connection-reuse-launch",
+  "name": "f1-connection-reuse-launch",
+  "title": "F1 Connection Reuse Sync And Launch",
   "description": "",
-  "status": "planning",
+  "status": "completed",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "ZhangBowen",
   "assignee": "ZhangBowen",
   "createdAt": "2026-04-17",
-  "completedAt": null,
+  "completedAt": "2026-04-21",
   "branch": null,
   "base_branch": "abr-remote-repro-20260328",
   "worktree_path": null,
@@ -48,6 +48,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "",
+  "notes": "Archived 2026-04-21: task was created 04-17 to sync cf9ecc5 (connection reuse) into main and launch F1. However, both happened independently on 04-17 itself: cf9ecc5 landed (commit d4b0f33 brings in the trellis update alongside), and F1 ran as 20260417-3g-exploit-round1-f1-r1 (ABRBench-3G = 87.9839, below A1 = 88.8697). Per experiments/campaigns/3g-exploit-round1.md, F1 series is 'closed as a narrow negative follow-up'. Future grok2api stability work continues under a new task (grok2api-stability-probe).",
   "meta": {}
 }
