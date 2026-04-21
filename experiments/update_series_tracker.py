@@ -38,6 +38,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CAMPAIGNS_DIR = SCRIPT_DIR / "campaigns"
+CAMPAIGN_DATA_DIR = SCRIPT_DIR / "campaign_data"
 
 SCHEME_LABELS = {
     "sim_bb": "BB",
@@ -65,6 +66,7 @@ class RunData:
     label: str
     run_dir: Path
     run_id: str = ""
+    key_change: str = ""
     eoh_value: float | None = None
     baseline_ref: float | None = None  # e.g., RobustMPC for metric row
     per_dataset: dict[str, float | None] = field(default_factory=dict)
@@ -164,6 +166,11 @@ def extract_config_summary(run_dir: Path) -> str:
     return ""
 
 
+def build_campaign_data_dir(name: str) -> Path:
+    """Return the git-tracked directory for copied campaign CSV artifacts."""
+    return CAMPAIGN_DATA_DIR / name
+
+
 def load_run(run_dir: Path, label: str, metric_row: str) -> RunData:
     """Load data for a single run."""
     csv_path = find_csv(run_dir)
@@ -215,6 +222,7 @@ def generate_tracker_md(
     baseline_desc: str,
     metric_row: str,
     runs: list[RunData],
+    existing_key_changes: dict[str, str],
     existing_analysis: str,
     existing_next_steps: str,
 ) -> str:
@@ -254,8 +262,13 @@ def generate_tracker_md(
             except ValueError:
                 pass
 
-    lines.append(f"| Label | Config | {metric_row} | vs Baseline | Run ID | Run Root |")
-    lines.append("|-------|--------|" + "-" * (len(metric_row) + 2) + "|-------------|--------|----------|")
+    any_key_change = any(r.key_change for r in runs) or bool(existing_key_changes)
+    if any_key_change:
+        lines.append(f"| Label | Key Change | Config | {metric_row} | vs Baseline | Run ID | Run Root |")
+        lines.append("|-------|------------|--------|" + "-" * (len(metric_row) + 2) + "|-------------|--------|----------|")
+    else:
+        lines.append(f"| Label | Config | {metric_row} | vs Baseline | Run ID | Run Root |")
+        lines.append("|-------|--------|" + "-" * (len(metric_row) + 2) + "|-------------|--------|----------|")
     for r in runs:
         delta = ""
         if baseline_val is not None and r.eoh_value is not None:
@@ -265,9 +278,15 @@ def generate_tracker_md(
         # Shorten path for readability
         if "/root/code/" in run_root:
             run_root = run_root.replace("/root/code/", "")
-        lines.append(
-            f"| {r.label} | {r.config_summary} | {_fmt(r.eoh_value)} | {delta} | {r.run_id} | {run_root} |"
-        )
+        key_change = r.key_change or existing_key_changes.get(r.label, "")
+        if any_key_change:
+            lines.append(
+                f"| {r.label} | {key_change or '-'} | {r.config_summary} | {_fmt(r.eoh_value)} | {delta} | {r.run_id} | {run_root} |"
+            )
+        else:
+            lines.append(
+                f"| {r.label} | {r.config_summary} | {_fmt(r.eoh_value)} | {delta} | {r.run_id} | {run_root} |"
+            )
     lines.append("")
 
     # Per-dataset breakdown (only datasets that have data)
@@ -352,6 +371,40 @@ def extract_manual_sections(content: str) -> tuple[str, str]:
     return analysis, next_steps
 
 
+def extract_existing_key_changes(content: str) -> dict[str, str]:
+    """Extract existing Key Change values from the experiments table by label."""
+    key_changes: dict[str, str] = {}
+
+    if "## Experiments" not in content:
+        return key_changes
+
+    section = content.split("## Experiments", 1)[1]
+    if "## " in section:
+        section = section.split("## ", 1)[0]
+
+    lines = [line.strip() for line in section.splitlines() if line.strip().startswith("|")]
+    if len(lines) < 3:
+        return key_changes
+
+    header = [cell.strip() for cell in lines[0].strip("|").split("|")]
+    if "Label" not in header or "Key Change" not in header:
+        return key_changes
+
+    label_idx = header.index("Label")
+    key_idx = header.index("Key Change")
+
+    for line in lines[2:]:
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if len(cells) <= max(label_idx, key_idx):
+            continue
+        label = cells[label_idx]
+        key_change = cells[key_idx]
+        if label and key_change and key_change != "-":
+            key_changes[label] = key_change
+
+    return key_changes
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -362,6 +415,18 @@ def parse_run_arg(arg: str) -> tuple[str, str]:
         path_str, label = arg.rsplit(":", 1)
         return path_str.strip(), label.strip()
     return arg.strip(), Path(arg.strip()).name
+
+
+def parse_key_change_arg(arg: str) -> tuple[str, str]:
+    """Parse --key-change argument in format 'label=text'."""
+    if "=" not in arg:
+        raise ValueError(f"Invalid --key-change value: {arg!r}. Expected 'label=text'.")
+    label, text = arg.split("=", 1)
+    label = label.strip()
+    text = text.strip()
+    if not label or not text:
+        raise ValueError(f"Invalid --key-change value: {arg!r}. Expected non-empty label and text.")
+    return label, text
 
 
 def main() -> None:
@@ -409,6 +474,13 @@ Examples:
         help="Run directory and label in format 'path:label'. Repeatable.",
     )
     parser.add_argument(
+        "--key-change",
+        action="append",
+        dest="key_changes",
+        default=[],
+        help="Optional per-run summary in format 'label=text'. Repeatable.",
+    )
+    parser.add_argument(
         "--output",
         default="",
         help="Override output path (default: experiments/campaigns/<name>.md)",
@@ -426,12 +498,14 @@ Examples:
     # Load existing content for preservation
     existing_analysis = ""
     existing_next_steps = ""
+    existing_key_changes: dict[str, str] = {}
     existing_objective = args.objective
     existing_baseline = args.baseline
 
     if output_path.is_file():
         old_content = output_path.read_text()
         existing_analysis, existing_next_steps = extract_manual_sections(old_content)
+        existing_key_changes = extract_existing_key_changes(old_content)
 
         # Preserve objective/baseline from existing file if not provided
         if not args.objective:
@@ -443,6 +517,14 @@ Examples:
             if m:
                 existing_baseline = m.group(1).strip()
 
+    cli_key_changes: dict[str, str] = {}
+    for item in args.key_changes:
+        try:
+            label, text = parse_key_change_arg(item)
+        except ValueError as exc:
+            parser.error(str(exc))
+        cli_key_changes[label] = text
+
     # Load runs
     run_data: list[RunData] = []
     for run_arg in args.runs:
@@ -453,6 +535,7 @@ Examples:
             continue
         print(f"Loading: {label} from {run_dir}")
         rd = load_run(run_dir, label, args.metric)
+        rd.key_change = cli_key_changes.get(label, existing_key_changes.get(label, ""))
         run_data.append(rd)
 
     if not run_data:
@@ -466,6 +549,7 @@ Examples:
         baseline_desc=existing_baseline,
         metric_row=args.metric,
         runs=run_data,
+        existing_key_changes=existing_key_changes,
         existing_analysis=existing_analysis,
         existing_next_steps=existing_next_steps,
     )
@@ -473,8 +557,8 @@ Examples:
     output_path.write_text(md)
     print(f"Series tracker saved to {output_path}")
 
-    # Copy results_summary.csv to campaigns/<name>/ for git tracking
-    data_dir = CAMPAIGNS_DIR / args.name
+    # Copy results_summary.csv to campaign_data/<name>/ for git tracking.
+    data_dir = build_campaign_data_dir(args.name)
     data_dir.mkdir(parents=True, exist_ok=True)
     for rd in run_data:
         csv_path = find_csv(rd.run_dir)

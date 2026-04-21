@@ -246,7 +246,7 @@ python3 experiments/update_series_tracker.py \
     --run /path/to/another-dir:LabelB
 ```
 
-The script also copies `results_summary.csv` to `experiments/campaigns/<series>/` for git tracking.
+The script also copies `results_summary.csv` to `experiments/campaign_data/<series>/` for git tracking.
 
 Manually fill in the **Analysis** and **Next Steps** sections. These are preserved on re-runs.
 
