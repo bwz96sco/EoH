@@ -264,6 +264,235 @@ RATE_BASED_CODE = textwrap.dedent(
 ).strip()
 
 
+RMPC_PREDICTOR_CODE = textwrap.dedent(
+    """
+    import numpy as np
+
+    def _harmonic_mean(x, eps=1e-6):
+        x = np.asarray(x, dtype=float).reshape(-1)
+        x = x[np.isfinite(x)]
+        x = x[x > eps]
+        if x.size == 0:
+            return 0.0
+        return float(x.size / np.sum(1.0 / np.maximum(x, eps)))
+
+    def _ema(x, alpha):
+        x = np.asarray(x, dtype=float).reshape(-1)
+        x = x[np.isfinite(x)]
+        if x.size == 0:
+            return 0.0
+        if x.size == 1:
+            return float(x[0])
+        alpha = float(np.clip(alpha, 0.0, 1.0))
+        value = (float(x[0]) + float(x[1])) / 2.0
+        for sample in x[2:]:
+            value = (1.0 - alpha) * value + alpha * float(sample)
+        return value
+
+    def predict_next_chunk_bandwidth(history_mbps, state, ctx, eps=1e-6):
+        hist = np.asarray(history_mbps, dtype=float).reshape(-1) / 8.0
+        hist = hist[np.isfinite(hist)]
+        if hist.size == 0:
+            return 0.0
+
+        recent = hist[-6:]
+        harmonic = _harmonic_mean(recent, eps)
+        ema = _ema(recent, 0.35)
+        low_q = float(np.quantile(recent, 0.25)) if recent.size > 1 else float(recent[-1])
+        slope = 0.0
+        if recent.size > 1:
+            slope = float(np.mean(np.diff(recent)))
+        volatility = float(np.std(recent) / max(float(np.mean(recent)), eps))
+
+        buffer_s = float(state.get("buffer_s", 0.0))
+        buffer_max_s = float(ctx.get("buffer_max_s", 60.0))
+        buffer_ratio = np.clip(buffer_s / max(buffer_max_s, eps), 0.0, 1.0)
+
+        downtrend = np.clip(-slope / max(ema, eps), 0.0, 0.8)
+        volatility_penalty = np.clip(volatility, 0.0, 0.8)
+        buffer_penalty = np.clip(0.35 - buffer_ratio, 0.0, 0.35)
+
+        robust_core = min(harmonic, ema)
+        predictive_bonus = np.clip(slope, 0.0, 0.25 * max(ema, eps))
+        conservative_floor = min(low_q, robust_core)
+        margin = np.clip(0.10 + 0.55 * downtrend + 0.35 * volatility_penalty + 0.45 * buffer_penalty, 0.05, 0.75)
+
+        predicted = max(conservative_floor, robust_core + predictive_bonus)
+        return max(predicted * (1.0 - margin), eps)
+
+    def score(state, ctx):
+        \"\"\"Predictor-MPC: fixed exact MPC search with an evolved-style bandwidth predictor scaffold.\"\"\"
+        bitrates = np.asarray(ctx.get("bitrates_kbps", []), dtype=float).reshape(-1)
+        k = int(bitrates.size)
+        next_sizes = np.asarray(state.get("next_chunk_sizes_bytes", []), dtype=float).reshape(-1)
+        future_sizes = np.asarray(state.get("future_chunk_sizes_bytes", []), dtype=float)
+        if k == 0:
+            return np.zeros_like(bitrates, dtype=float)
+        if future_sizes.ndim == 1:
+            if future_sizes.size == 0:
+                future_sizes = np.empty((0, k), dtype=float)
+            else:
+                future_sizes = future_sizes.reshape(1, -1)
+        if future_sizes.size == 0 and next_sizes.size == k:
+            future_sizes = next_sizes.reshape(1, -1)
+        if future_sizes.ndim != 2 or future_sizes.shape[1] != k:
+            return np.zeros_like(bitrates, dtype=float)
+
+        horizon = max(0, min(5, int(state.get("chunk_remain", 5)), int(future_sizes.shape[0])))
+        if horizon <= 0:
+            return np.zeros_like(bitrates, dtype=float)
+        future_sizes = future_sizes[:horizon]
+
+        buffer_s = float(state.get("buffer_s", 0.0))
+        last_idx = int(np.clip(int(state.get("last_bitrate_idx", 0)), 0, k - 1))
+        chunk_len_s = float(ctx.get("chunk_len_s", 4.0))
+        link_rtt_s = float(ctx.get("link_rtt_s", 0.08))
+        rebuf_penalty = float(ctx.get("rebuf_penalty", 4.3))
+        smooth_penalty = float(ctx.get("smooth_penalty", 1.0))
+        hist_mbps = np.asarray(state.get("throughput_hist_mbps", []), dtype=float)
+        predict_tput = predict_next_chunk_bandwidth(hist_mbps, state, ctx)
+
+        max_reward = -np.inf
+        best_first = 0
+        for combo_idx in range(k ** horizon):
+            combo = []
+            tmp = combo_idx
+            for _ in range(horizon):
+                combo.append(int(tmp % k))
+                tmp //= k
+
+            curr_buffer = buffer_s
+            reward_total = 0.0
+            curr_last_idx = last_idx
+
+            for position in range(horizon):
+                chunk_quality = combo[position]
+                chunk_size = float(future_sizes[position, chunk_quality])
+                download_time = chunk_size / (predict_tput * 1e6) + link_rtt_s
+                rebuffer_time = max(download_time - curr_buffer, 0.0)
+
+                if curr_buffer < download_time:
+                    curr_buffer = 0.0
+                else:
+                    curr_buffer -= download_time
+                curr_buffer += chunk_len_s
+
+                reward_total += (
+                    float(bitrates[chunk_quality]) / 1000.0
+                    - rebuf_penalty * rebuffer_time
+                    - smooth_penalty * abs(float(bitrates[chunk_quality]) - float(bitrates[curr_last_idx])) / 1000.0
+                )
+                curr_last_idx = chunk_quality
+
+            if reward_total >= max_reward:
+                max_reward = reward_total
+                best_first = combo[0]
+
+        scores = np.full(k, -np.inf, dtype=float)
+        scores[best_first] = 0.0
+        return scores
+    """
+).strip()
+
+
+VIRTUAL_SENSOR_CODE = textwrap.dedent(
+    """
+    import numpy as np
+
+    def _harmonic_mean(x, eps=1e-6):
+        x = np.asarray(x, dtype=float).reshape(-1)
+        x = x[np.isfinite(x)]
+        x = x[x > eps]
+        if x.size == 0:
+            return 0.0
+        return float(x.size / np.sum(1.0 / np.maximum(x, eps)))
+
+    def _ema(x, alpha):
+        x = np.asarray(x, dtype=float).reshape(-1)
+        x = x[np.isfinite(x)]
+        if x.size == 0:
+            return 0.0
+        if x.size == 1:
+            return float(x[0])
+        alpha = float(np.clip(alpha, 0.0, 1.0))
+        value = (float(x[0]) + float(x[1])) / 2.0
+        for sample in x[2:]:
+            value = (1.0 - alpha) * value + alpha * float(sample)
+        return value
+
+    def compute_indicators(state, ctx, eps=1e-6):
+        hist_mbps = np.asarray(state.get("throughput_hist_mbps", []), dtype=float).reshape(-1)
+        hist_kbps = hist_mbps * 1000.0
+        hist_kbps = hist_kbps[np.isfinite(hist_kbps)]
+        buffer_s = float(state.get("buffer_s", 0.0))
+        buffer_max_s = float(ctx.get("buffer_max_s", 60.0))
+        buffer_ratio = np.clip(buffer_s / max(buffer_max_s, eps), 0.0, 1.0)
+
+        if hist_kbps.size == 0:
+            sustainable_kbps = 0.0
+            downtrend = 0.0
+            volatility = 1.0
+        else:
+            recent = hist_kbps[-6:]
+            sustainable_kbps = min(_harmonic_mean(recent, eps), _ema(recent, 0.25))
+            slope = float(np.mean(np.diff(recent))) if recent.size > 1 else 0.0
+            downtrend = np.clip(-slope / max(abs(sustainable_kbps), eps), 0.0, 1.0)
+            volatility = np.clip(float(np.std(recent) / max(float(np.mean(recent)), eps)), 0.0, 1.5)
+
+        stress = np.clip(0.55 * (1.0 - buffer_ratio) + 0.30 * downtrend + 0.15 * min(volatility, 1.0), 0.0, 1.0)
+        buffer_momentum = np.clip(buffer_ratio - 0.5 * downtrend, 0.0, 1.0)
+        stall_guard_s = 1.2 + 4.0 * stress + 1.5 * (1.0 - buffer_momentum)
+        return {
+            "stress": float(stress),
+            "buffer_momentum": float(buffer_momentum),
+            "sustainable_kbps": float(max(sustainable_kbps, 0.0)),
+            "stall_guard_s": float(stall_guard_s),
+        }
+
+    def score(state, ctx):
+        \"\"\"Virtual-sensor controller: evolve indicators, keep the bitrate controller fixed and conservative.\"\"\"
+        bitrates = np.asarray(ctx.get("bitrates_kbps", []), dtype=float).reshape(-1)
+        next_sizes = np.asarray(state.get("next_chunk_sizes_bytes", []), dtype=float).reshape(-1)
+        k = int(bitrates.size)
+        if k == 0 or next_sizes.size != k:
+            return np.zeros_like(bitrates, dtype=float)
+
+        indicators = compute_indicators(state, ctx)
+        sustainable_kbps = indicators["sustainable_kbps"]
+        stress = indicators["stress"]
+        buffer_momentum = indicators["buffer_momentum"]
+        stall_guard_s = indicators["stall_guard_s"]
+
+        buffer_s = float(state.get("buffer_s", 0.0))
+        last_idx = int(np.clip(int(state.get("last_bitrate_idx", 0)), 0, k - 1))
+        link_rtt_s = float(ctx.get("link_rtt_s", 0.08))
+        rebuf_penalty = float(ctx.get("rebuf_penalty", 4.3))
+        smooth_penalty = float(ctx.get("smooth_penalty", 1.0))
+
+        safe_budget_kbps = sustainable_kbps * np.clip(0.60 + 0.35 * buffer_momentum - 0.30 * stress, 0.30, 0.95)
+        predicted_mbytes_per_s = max(sustainable_kbps / 8000.0, 1e-6)
+
+        scores = np.empty(k, dtype=float)
+        for idx in range(k):
+            chunk_size = float(next_sizes[idx])
+            download_time = chunk_size / (predicted_mbytes_per_s * 1e6) + link_rtt_s
+            stall_excess = max(download_time - max(buffer_s - stall_guard_s, 0.0), 0.0)
+            over_budget = max(float(bitrates[idx]) - safe_budget_kbps, 0.0) / max(safe_budget_kbps, 1.0)
+            switch_cost = abs(float(bitrates[idx]) - float(bitrates[last_idx])) / 1000.0
+
+            scores[idx] = (
+                float(bitrates[idx]) / 1000.0
+                - rebuf_penalty * (1.0 + 1.5 * stress) * stall_excess
+                - smooth_penalty * (0.6 + 0.8 * stress) * switch_cost
+                - 8.0 * over_budget * over_budget
+            )
+
+        scores += np.linspace(0.0, 1e-10, k)
+        return scores
+    """
+).strip()
+
+
 def _load_seed_module(name: str, code: str) -> types.ModuleType:
     module = types.ModuleType(name)
     exec(code, module.__dict__)
@@ -275,6 +504,8 @@ _BOLA_MODULE = _load_seed_module("eoh_seed_bola", BOLA_CODE)
 _QUETRA_MODULE = _load_seed_module("eoh_seed_quetra", QUETRA_CODE)
 _ROBUST_MPC_MODULE = _load_seed_module("eoh_seed_robust_mpc", ROBUST_MPC_CODE)
 _RATE_BASED_MODULE = _load_seed_module("eoh_seed_rate_based", RATE_BASED_CODE)
+_RMPC_PREDICTOR_MODULE = _load_seed_module("eoh_seed_rmpc_predictor", RMPC_PREDICTOR_CODE)
+_VIRTUAL_SENSOR_MODULE = _load_seed_module("eoh_seed_virtual_sensor", VIRTUAL_SENSOR_CODE)
 
 # Export executable helpers from the exact same code text written to seeds.json.
 score_bb = _BB_MODULE.score
@@ -282,6 +513,8 @@ score_bola = _BOLA_MODULE.score
 score_quetra = _QUETRA_MODULE.score
 score_robust_mpc = _ROBUST_MPC_MODULE.score
 score_rate_based = _RATE_BASED_MODULE.score
+score_rmpc_predictor = _RMPC_PREDICTOR_MODULE.score
+score_virtual_sensor = _VIRTUAL_SENSOR_MODULE.score
 _ema = _QUETRA_MODULE._ema
 
 
@@ -310,6 +543,16 @@ SEED_HEURISTICS: Sequence[dict[str, str]] = [
         "name": "rate_based",
         "algorithm": "{Rate-based: use a conservative harmonic-mean bandwidth estimate and strongly penalize bitrates above that budget so the best score stays near the highest sustainable quality}",
         "code": RATE_BASED_CODE,
+    },
+    {
+        "name": "rmpc_predictor",
+        "algorithm": "{Predictor-MPC: keep the exact MPC rollout fixed, but replace the bandwidth estimator with a regime-aware predictor that blends harmonic mean, EMA, low quantiles, slope, volatility, and buffer risk before planning the next action}",
+        "code": RMPC_PREDICTOR_CODE,
+    },
+    {
+        "name": "virtual_sensor",
+        "algorithm": "{Virtual-sensor controller: compute interpretable indicators for network stress, buffer momentum, sustainable bandwidth, and stall guard, then feed them into a fixed conservative bitrate controller instead of evolving the whole decision logic at once}",
+        "code": VIRTUAL_SENSOR_CODE,
     },
 ]
 
