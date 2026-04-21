@@ -1,0 +1,304 @@
+{
+  "mode": "load",
+  "endpoint": "http://127.0.0.1:8000",
+  "model": "grok-4.20-fast",
+  "prompt_len": 14189,
+  "records": [
+    {
+      "t": "2026-04-21T11:48:28Z",
+      "mode": "load",
+      "worker": 0,
+      "concurrency": 6,
+      "call_idx": 0,
+      "http_attempts": 1,
+      "content_len": 3563,
+      "elapsed_ms": 13072.666,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Compute a throughput safety margin as "
+    },
+    {
+      "t": "2026-04-21T11:48:39Z",
+      "mode": "load",
+      "worker": 0,
+      "concurrency": 6,
+      "call_idx": 1,
+      "http_attempts": 1,
+      "content_len": 2724,
+      "elapsed_ms": 10890.023,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Compute an exponentially-weighted movi"
+    },
+    {
+      "t": "2026-04-21T11:48:55Z",
+      "mode": "load",
+      "worker": 0,
+      "concurrency": 6,
+      "call_idx": 2,
+      "http_attempts": 2,
+      "content_len": 3190,
+      "elapsed_ms": 15678.236,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Compute a conservative throughput esti"
+    },
+    {
+      "t": "2026-04-21T11:48:29Z",
+      "mode": "load",
+      "worker": 1,
+      "concurrency": 6,
+      "call_idx": 0,
+      "http_attempts": 2,
+      "content_len": 2811,
+      "elapsed_ms": 13760.658,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Compute an optimistic throughput estim"
+    },
+    {
+      "t": "2026-04-21T11:48:41Z",
+      "mode": "load",
+      "worker": 1,
+      "concurrency": 6,
+      "call_idx": 1,
+      "http_attempts": 1,
+      "content_len": 3166,
+      "elapsed_ms": 11366.893,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Use a safety-first linear buffer occup"
+    },
+    {
+      "t": "2026-04-21T11:48:54Z",
+      "mode": "load",
+      "worker": 1,
+      "concurrency": 6,
+      "call_idx": 2,
+      "http_attempts": 1,
+      "content_len": 3130,
+      "elapsed_ms": 13370.41,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Compute a throughput safety margin as "
+    },
+    {
+      "t": "2026-04-21T11:48:27Z",
+      "mode": "load",
+      "worker": 2,
+      "concurrency": 6,
+      "call_idx": 0,
+      "http_attempts": 1,
+      "content_len": 2901,
+      "elapsed_ms": 11096.274,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Estimate a safe throughput ceiling fro"
+    },
+    {
+      "t": "2026-04-21T11:48:37Z",
+      "mode": "load",
+      "worker": 2,
+      "concurrency": 6,
+      "call_idx": 1,
+      "http_attempts": 1,
+      "content_len": 3122,
+      "elapsed_ms": 10586.836,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Compute a conservative throughput esti"
+    },
+    {
+      "t": "2026-04-21T11:48:51Z",
+      "mode": "load",
+      "worker": 2,
+      "concurrency": 6,
+      "call_idx": 2,
+      "http_attempts": 1,
+      "content_len": 3677,
+      "elapsed_ms": 14035.897,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Compute an estimated sustainable bitra"
+    },
+    {
+      "t": "2026-04-21T11:48:28Z",
+      "mode": "load",
+      "worker": 3,
+      "concurrency": 6,
+      "call_idx": 0,
+      "http_attempts": 1,
+      "content_len": 3101,
+      "elapsed_ms": 12371.185,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Estimate a safe bitrate ceiling from t"
+    },
+    {
+      "t": "2026-04-21T11:48:41Z",
+      "mode": "load",
+      "worker": 3,
+      "concurrency": 6,
+      "call_idx": 1,
+      "http_attempts": 1,
+      "content_len": 3296,
+      "elapsed_ms": 13114.485,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Compute a safety-adjusted throughput c"
+    },
+    {
+      "t": "2026-04-21T11:48:53Z",
+      "mode": "load",
+      "worker": 3,
+      "concurrency": 6,
+      "call_idx": 2,
+      "http_attempts": 1,
+      "content_len": 3083,
+      "elapsed_ms": 12469.201,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Compute an exponential safety margin f"
+    },
+    {
+      "t": "2026-04-21T11:48:29Z",
+      "mode": "load",
+      "worker": 4,
+      "concurrency": 6,
+      "call_idx": 0,
+      "http_attempts": 1,
+      "content_len": 3329,
+      "elapsed_ms": 13253.2,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Compute a future-aware normalized util"
+    },
+    {
+      "t": "2026-04-21T11:48:40Z",
+      "mode": "load",
+      "worker": 4,
+      "concurrency": 6,
+      "call_idx": 1,
+      "http_attempts": 1,
+      "content_len": 2949,
+      "elapsed_ms": 11238.937,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Compute a conservative throughput esti"
+    },
+    {
+      "t": "2026-04-21T11:48:54Z",
+      "mode": "load",
+      "worker": 4,
+      "concurrency": 6,
+      "call_idx": 2,
+      "http_attempts": 1,
+      "content_len": 2534,
+      "elapsed_ms": 14488.927,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Compute per-bitrate utility as a linea"
+    },
+    {
+      "t": "2026-04-21T11:48:30Z",
+      "mode": "load",
+      "worker": 5,
+      "concurrency": 6,
+      "call_idx": 0,
+      "http_attempts": 1,
+      "content_len": 3460,
+      "elapsed_ms": 14675.516,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Estimate a safe bitrate ceiling from t"
+    },
+    {
+      "t": "2026-04-21T11:48:43Z",
+      "mode": "load",
+      "worker": 5,
+      "concurrency": 6,
+      "call_idx": 1,
+      "http_attempts": 1,
+      "content_len": 3285,
+      "elapsed_ms": 12334.144,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Compute a throughput safety margin as "
+    },
+    {
+      "t": "2026-04-21T11:48:53Z",
+      "mode": "load",
+      "worker": 5,
+      "concurrency": 6,
+      "call_idx": 2,
+      "http_attempts": 1,
+      "content_len": 2796,
+      "elapsed_ms": 10458.731,
+      "error_type": null,
+      "status": "success",
+      "content_preview": "{Algorithm 6: synthetic_ABR_heuristic_v6. Estimate a safe bitrate ceiling from t"
+    }
+  ],
+  "summary": {
+    "overall": {
+      "total": 18,
+      "success_rate": 1.0,
+      "empty_200_rate": 0.0,
+      "transport_error_rate": 0.0,
+      "by_status": {
+        "success": 18
+      },
+      "by_http_attempts": {
+        "1": 16,
+        "2": 2
+      },
+      "content_len_mean": 3117.6111111111113,
+      "content_len_min": 2534,
+      "content_len_max": 3677,
+      "latency_ms": {
+        "min": 10458.731,
+        "p50": 12469.201,
+        "p95": 14675.516,
+        "p99": 15678.236,
+        "max": 15678.236,
+        "mean": 12681.234388888888
+      },
+      "first_vs_reused": {
+        "first_mean_ms": 13038.249833333333,
+        "reused_mean_ms": 12502.726666666667,
+        "delta_ms": 535.5231666666659
+      }
+    },
+    "by_concurrency": {
+      "6": {
+        "total": 18,
+        "success_rate": 1.0,
+        "empty_200_rate": 0.0,
+        "transport_error_rate": 0.0,
+        "by_status": {
+          "success": 18
+        },
+        "by_http_attempts": {
+          "1": 16,
+          "2": 2
+        },
+        "content_len_mean": 3117.6111111111113,
+        "content_len_min": 2534,
+        "content_len_max": 3677,
+        "latency_ms": {
+          "min": 10458.731,
+          "p50": 12469.201,
+          "p95": 14675.516,
+          "p99": 15678.236,
+          "max": 15678.236,
+          "mean": 12681.234388888888
+        },
+        "first_vs_reused": {
+          "first_mean_ms": 13038.249833333333,
+          "reused_mean_ms": 12502.726666666667,
+          "delta_ms": 535.5231666666659
+        }
+      }
+    }
+  }
+}
