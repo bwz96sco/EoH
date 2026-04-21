@@ -54,6 +54,39 @@ Every experiment follows this lifecycle:
 6. **Record**: Runner auto-updates global tracker; manually update series tracker in the main local checkout
 7. **Cleanup**: Remove temporary worktrees if used
 
+## Post-Launch Health Gate
+
+Do not treat a run as "successfully launched" just because:
+
+- the shell command returned
+- a wrapper process still exists
+- the run root was created
+- or `full_pipeline.log` started receiving output
+
+After every launch, explicitly inspect the run log and confirm the job is making **healthy phase progress**.
+
+Minimum checks:
+
+1. Tail the canonical `logs/full_pipeline.log` (and any launcher log if using `nohup`).
+2. Confirm the run passed the wrapper startup stage and entered the real workload:
+   - EoH phase: operator output, generation progress, or `population_generation_*.json`
+   - Eval phase: dataset loop progress and log writes
+3. Look for health blockers before reporting success:
+   - repeated `API error`
+   - `RemoteDisconnected`
+   - `429`
+   - `Traceback`
+   - `worker_budget_timeout`
+   - repeated `llm_timeout` / `eval_timeout`
+   - no new population files for an extended interval
+4. If the run is unhealthy, report it as such immediately; do not summarize it as a valid experiment result.
+
+Interpretation rule:
+
+- `results_summary.csv` + clean phase completion logs = valid completed run
+- process alive but repeated connection / timeout errors = unhealthy run
+- no `population_generation_1+` and no analysis outputs = not a valid completed run
+
 ## Pre-flight Check
 
 Before launching any experiment:
