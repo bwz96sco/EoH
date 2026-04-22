@@ -1,0 +1,58 @@
+# Series: 3G Advanced Architectures Round 1
+
+## Objective
+把 [docs/eoh_abr_advanced_strategies.md](/Users/zhangbowen/Projects/EoH/docs/eoh_abr_advanced_strategies.md) 里最值得先落地的两个方向压成**最小可跑的结构化 seed family**，先验证它们在 `ABRBench-3G` 上是否有信号：
+
+- `virtual_sensor`: 固定 controller，只把若干虚拟指标封装进 heuristic scaffold
+- `rmpc_predictor`: 固定 MPC rollout，只替换 bandwidth predictor scaffold
+
+这轮不是最终形态研究框架；目标只是先回答：**结构化架构种子是否值得继续投资**。
+
+## Primary Metric
+- `ABRBench-3G (avg)` from `results_summary.csv`
+
+## Baseline Reference
+- `20260330-140417-seed-impact-pop5-seed-abrbench-3g-quetra`
+- Config: `QUETRA + pop5 + mean`
+- Reference result: `ABRBench-3G (avg) = 86.9527`
+
+Secondary reference:
+- `20260402-3g-hardset-round2-a1-r1`
+- Config: `QUETRA + pop25 + mean`
+- Best known result: `88.8697`
+
+## Fixed Settings
+- Runner: `experiments/run_eoh_target_experiment.sh`
+- Evolution dataset: `ABRBench-3G`
+- Eval datasets: `FCC-16,FCC-18,Oboe,Puffer-21,Puffer-22,HSR`
+- Population size: `EC_POP_SIZE=5`
+- Generations: `EC_N_POP=10`
+- Fitness: plain `mean`
+- Remote execution profile: `grok2api workers=1`, `EXP_N_PROC=1`
+
+## Run Matrix
+
+| Label | Key Change | Status | Run ID | Result |
+|-------|------------|--------|--------|--------|
+| V1 | New seed family `virtual_sensor`: fixed indicator scaffold + fixed conservative controller | failed | `20260421-3g-advanced-architectures-round1-v1-r1` | unhealthy launch; reached `e1` but hit repeated `BrokenPipeError` / upstream `429` before a valid first generation formed |
+| P1 | New seed family `rmpc_predictor`: fixed exact MPC rollout + new regime-aware predictor scaffold | failed | `20260421-3g-advanced-architectures-round1-p1-r1` | reached `5/10` populations, but repeated `BrokenPipeError` / upstream `429` kept the run dirty, so no trustworthy result was produced |
+
+## Analysis Plan
+
+1. First compare each run only against `QUETRA pop5 = 86.9527`.
+2. Only if one of them clearly beats the `QUETRA pop5` reference, consider a follow-up round with larger population / budget.
+3. Do not treat failure to beat `A1 = 88.8697` in this round as a decisive negative result; this round is only a low-budget signal check.
+
+## Current Interpretation
+
+- `virtual_sensor` is the lower-risk way to test “structured architecture” without changing the evaluator contract.
+- `rmpc_predictor` is the most direct continuation of the existing `RobustMPC / rmpc_blend` signal.
+- Both are intentionally implemented as **seed families**, not new EoH problem types, so they can be tested inside the current pipeline with minimal cross-layer drift.
+- `V1` did not fail in a way that says much about the seed idea itself; it mainly reproduced the current grok transport instability (`BrokenPipe` + upstream `429`) under formal launch conditions.
+- `P1` made real evolutionary progress, unlike `V1`, but it still remained dirty throughout the run: repeated `BrokenPipeError` and upstream `429` were common deep into the population loop, so it also fails the health-gate standard for trustworthy evidence.
+
+## Next Steps
+
+1. Do not rerun `V1` or `P1` until the grok path shows a cleaner launch profile again.
+2. Treat this whole architecture round as blocked by provider / transport instability rather than as a clean negative result on the seed ideas themselves.
+3. Deprioritize new architecture campaigns behind restoring experiment reliability, `A1` budget scaling, and narrower train-side tie-break work.

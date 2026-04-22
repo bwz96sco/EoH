@@ -52,98 +52,163 @@ Per-dataset breakdown (3G group, EoH vs RobustMPC):
 - Profile the bandwidth distribution in ABRBench-3G training traces
 - Check if certain datasets (e.g., Puffer) dominate the trace count and skew the fitness signal
 
-## Improvement Strategies (ranked by expected impact)
+## Progress Since This Note Was Written
 
-### Strategy 1: Multi-objective / per-dataset fitness (HIGH impact)
+The original diagnosis above was based on the early `~ -122` 3G runs. Since then, several focused campaigns have been executed.
 
-**Problem**: Single averaged fitness across all training traces rewards "least bad everywhere" instead of "adaptive to conditions."
+### What has already been tested
 
-**Options**:
-- A) **Worst-case aware fitness**: `fitness = mean_qoe - alpha * std_qoe` (penalize high variance across traces)
-- B) **Per-dataset percentile**: Compute QoE per dataset, use the worst percentile as fitness
-- C) **Pareto-based selection**: Track per-dataset QoE as a multi-objective vector, use NSGA-II style dominance
+| Campaign / run | Main change | 3G result | Interpretation |
+|------|------|------:|------|
+| `20260330-140417-seed-impact-pop5-seed-abrbench-3g-quetra` | Single-seed (`QUETRA`), `pop=5`, `mean` | `86.9527` | Strong evidence that seed choice matters a lot. |
+| `20260331-085304-3g-improve-enhanced-feedback-r2` | Stronger feedback injection | `86.5` | Helpful, but not enough to beat the best single-seed baseline. |
+| `20260331-085318-3g-improve-fitness-constraint-r2` | Fitness shaping (`mean_util`) | `86.0` | Some improvement, but weaker than the best seed-only route. |
+| `20260331-085334-3g-improve-pop-diversity-r2` | Diversity maintenance / behavior descriptors | `85.5` | Did not beat the best seed-only baseline. |
+| `20260331-121909-exp-d-cvar-large-pop` | CVaR-25 + larger population | `83.2` | Larger population alone inside this setup was not enough; CVaR likely hurt. |
+| `20260331-121909-exp-f-cvar-adaptive-seed` | CVaR-25 + adaptive seed variant | `54.7` | Clear negative result. |
+| `20260401-132132-mixed-pop25-exp12` | Mixed seeds, `pop=25`, `mean` | `87.5768` | Larger population can rescue mixed-seed runs. |
+| `20260402-3g-hardset-round2-a1-r1` | `QUETRA + pop25 + mean` | `88.8697` | Current best result. Best evidence that **single-seed + larger population** works. |
+| `20260402-3g-hardset-round2-a2-r1` | `QUETRA + pop5 + dataset_balanced_mean` | `84.7306` | `dataset_balanced_mean` alone did not help. |
+| `20260402-3g-hardset-round2-a3-r1` | `QUETRA + pop25 + dataset_balanced_mean` | `86.6136` | New objective underperformed `A1`; also regressed on `HSR`. |
+| `20260402-3g-hardset-round2-a4-r1` | Mixed seeds + `pop25` + `dataset_balanced_mean` | `87.2202` | Better than early mixed runs, still below `A1`. |
+| `20260406-3g-validation-round1-v1-r1` | `train_validation_mean`, `QUETRA + pop25` | `87.3073` | Validation-aware objective regularized a bit, but did not beat `A1`. |
+| `20260406-3g-validation-round1-v2-r1` | `train_validation_min`, `QUETRA + pop25` | `87.1743` | Even more conservative than `V1`; also below `A1`. |
+| `20260412-3g-seed-round2-s1-r1` | New seed `quetra_regime`, `pop=5`, `mean` | `86.5915` | New seed idea did not beat `QUETRA pop5`. |
+| `20260412-3g-seed-round2-s2-r1` | New seed `rmpc_blend`, `pop=5`, `mean` | `87.2151` | Closest new seed. Slightly better than `QUETRA pop5`, but still below `A1`. |
+| `20260412-3g-seed-round2-s3-r1` | New seed `a1_distilled`, `pop=5`, `mean` | `86.4146` | Distillation idea did not transfer cleanly into a stronger seed. |
+| `20260416-3g-island-round1-localhost-r2-fast-stageb-combined` | 5 single-seed islands, then merge winners and continue | `87.5384` | Stronger than online baselines, but still below `A1`; broad island orchestration did not beat best single-seed. |
+| `20260417-3g-exploit-round1-f1-r1` | Family-local exploitation around `QUETRA` / `rmpc_blend`, `pop=25`, `mean` | `87.9839` | Best post-`A1` exploit attempt so far; improved `hard_mean`, but still below `A1` and missed `Oboe` / `HSR` gates. |
 
-**Implementation**: Modify `prob.py:_simulate()` to return per-dataset breakdown, modify fitness aggregation in `prob.py:evaluate_with_details()`.
+### What these completed experiments tell us
 
-### Strategy 2: Train/validation split during evolution (HIGH impact)
+1. **The 3G problem is no longer "EoH fundamentally fails on 3G".** The pipeline already improved from `~ -122` to `88.8697`.
+2. **The most reliable improvement so far is not fancy objective design; it is better seed organization plus larger population.**
+   - Current best method: `QUETRA + pop25 + mean`
+3. **`dataset_balanced_mean` is not supported by the current evidence.**
+   - It was the main hypothesis in round 2, but both `A2` and `A3` underperformed `A1`.
+4. **Mixed-seed remains weaker than the best single-seed route.**
+   - `mixed pop25 mean = 87.5768`
+   - `mixed pop25 dataset_balanced_mean = 87.2202`
+   - both are below `QUETRA pop25 mean = 88.8697`
+5. **Held-out validation during evolution is not supported by the current evidence.**
+   - `train_validation_mean = 87.3073`
+   - `train_validation_min = 87.1743`
+   - both underperformed `A1 = 88.8697`
+6. **Broad new-seed screening also did not produce a clear winner.**
+   - `rmpc_blend = 87.2151` was the only new seed that beat `QUETRA pop5 = 86.9527`
+   - but it still did not beat `A1`, and it missed the `hard_mean` gate
+7. **Broader reorganization around the winning family also has not beaten `A1`.**
+   - `island mode = 87.5384`
+   - `family-local F1 exploit = 87.9839`
+   - both are strong results, but neither surpassed `QUETRA + pop25 + mean`
+8. **Feedback likely helps, but it is not the dominant factor.**
+   - A small isolated ablation (`20260403-3g-feedback-on-small` vs `20260403-3g-feedback-off-small`) showed:
+     - feedback on: `86.9368`
+     - feedback off: `85.9539`
+     - delta: `+0.9829`
+   - So removing `m1` feedback hurts, but only modestly in this small-budget setting.
 
-**Problem**: Fitness is only on training traces; no overfitting detection.
+## Remaining Untried Or Under-Tested Directions
 
-**Options**:
-- A) **Validation-gated selection**: Evaluate on held-out validation traces; only accept offspring that improve on both train and validation
-- B) **Periodic validation check**: Every N generations, evaluate the population on validation traces; discard individuals that overfit
+The 3G space is no longer wide open. Most broad hypothesis families have already been exercised at least once. The main directions still **not directly tested** are:
 
-**Implementation**: Split `TRAIN_TRACES` into train_inner/validation in `config.py`, add validation evaluation in `eoh_interface_EC.py`.
+### 1. Budget scaling around the winning `A1` route
 
-### Strategy 3: Diversity maintenance (MEDIUM impact)
+This is still the cleanest untried direction:
 
-**Problem**: Population of 5 converges to a single strategy archetype by generation 4.
+- `QUETRA + pop25 + mean + more generations`
+- `QUETRA + larger population + matched budget`
 
-**Options**:
-- A) **Increase pop_size** to 10-15 (more diverse gene pool)
-- B) **Niching/crowding**: Prevent population from collapsing by maintaining behavior-diverse individuals (e.g., keep one high-bitrate, one conservative, one adaptive)
-- C) **Island model**: Run 2-3 independent populations on different trace subsets, exchange migrants periodically
+Examples:
 
-**Implementation**: Change `ec_pop_size` parameter; or modify `pop_greedy.py` to use behavior-based diversity metric.
+- `QUETRA + pop25 + mean + gen15`
+- `QUETRA + pop35 + mean + gen10`
 
-### Strategy 4: Better feedback / anti-conservatism pressure (MEDIUM impact)
+This stays on the only route that has already proven it can reach `88.8697`.
 
-**Problem**: The feedback mechanism (`feedback.py`) detects "too conservative" but the threshold (`mean_bitrate < 0.35 * max_bitrate`) is easily evaded.
+### 2. Narrow hard-case-aware tie-breaks on top of plain `mean`
 
-**Options**:
-- A) **Adaptive conservatism threshold**: Compare against baseline performance, not just absolute bitrate
-- B) **Explicit bitrate utilization reward**: Add `utilization = mean_bitrate / max_achievable_bitrate` to fitness
-- C) **Constrained optimization**: Minimum bitrate utilization constraint
+This is **not** the same as `dataset_balanced_mean` or full multi-objective replacement.
 
-**Implementation**: Modify `feedback.py` thresholds and `prob.py` fitness function.
+The still-open variant is:
 
-### Strategy 5: Add stronger seed heuristics (LOW-MEDIUM impact)
+- keep `mean` as the only training objective
+- use `hard_mean` floors or hard-dataset gates only as selection tie-breaks / acceptance filters
+- maintain an explicit `HSR` regression bound
 
-**Problem**: All 5 seeds perform poorly on 3G (QoE range -162 to -1748). Evolution has no good starting point.
+This remains untested in a clean matched-budget form.
 
-> **BeamSearch/MFD are NOT usable as seeds** — they rely on `net_env.get_optimal()` which uses future bandwidth (oracle). The EoH `score(state, ctx)` interface only has access to historical throughput.
+### 3. Selection-fidelity upgrades inside the current loop
 
-**Options**:
-- A) **Hand-craft a "safe adaptive" seed**: A heuristic that detects bandwidth regime (low/medium/high) and adjusts conservatism accordingly — conservative on bad traces, aggressive on good traces. This is the strategy the evolution fails to discover on its own.
-- B) **Port RobustMPC with better defaults**: The current RobustMPC seed uses exhaustive K^H search but a naive throughput estimator. Add a variant with EWMA + buffer-aware safety margin that's less extreme than the evolved 0.05x factor.
+The `S1` idea from `3g-exploit-round1` was planned but not launched:
 
-**Implementation**: Add new entries to `seed_heuristics.py`, regenerate seed cache.
+- first-pass fast evaluation for all candidates
+- shared-trace or larger-slice reevaluation for top-K
+- final ranking by reevaluated `mean`
 
-### Strategy 6: Condition-aware heuristic architecture (LOW impact, longer term)
+This is still open if the main suspected bottleneck is ranking noise rather than search-space quality.
 
-**Problem**: A single `score()` function must handle all network conditions.
+### 4. Behavior study of `A1` and motif extraction
 
-**Options**:
-- A) **Network condition classifier + strategy selector**: Detect bandwidth regime, apply different logic
-- B) **Prompt engineering**: Better describe the 3G challenges in `prompts.py` to guide LLM toward adaptive strategies
+Also still untried as a dedicated series:
 
-## Recommended Action Plan
+- inspect where `A1` wins on `FCC-16`, `Puffer-21`, `Puffer-22`
+- inspect where it loses on `HSR`
+- turn those motifs into:
+  - a tighter hand-crafted seed
+  - or prompt / operator constraints that bias evolution toward the useful pattern
 
-**Quick wins (can test immediately):**
-1. Increase `ec_pop_size` to 10 (Strategy 3A)
-2. Tighten feedback conservatism threshold in `feedback.py` (Strategy 4A)
-3. Hand-craft a bandwidth-adaptive seed heuristic (Strategy 5A)
+This is more targeted than another broad seed sweep.
 
-**Medium-term (requires code changes):**
-4. Implement per-dataset percentile fitness (Strategy 1B) — modify `prob.py`
-5. Add train/validation split (Strategy 2A) — modify `config.py` + evaluation pipeline
+### 5. Early temporary curriculum with late return to `mean`
 
-**Longer-term:**
-6. Multi-objective selection (Strategy 1C) — requires changes to EoH population management
+The `C1` idea from `3g-exploit-round1` was planned but not launched:
 
-## Files to Modify
+- oversample the hardest 3G traces for the first `20%-30%` of generations
+- return to plain `mean` afterward
 
-| File | Change |
-|------|--------|
-| `examples/user_abr/seed_heuristics.py` | Add BeamSearch/MFD as seeds |
-| `examples/user_abr/prob.py` | Per-dataset fitness aggregation, validation split |
-| `examples/user_abr/feedback.py` | Tighter conservatism detection |
-| `examples/user_abr/runEoH.py` | Increase ec_pop_size |
-| `env/SABR/config.py` | Train/validation split definitions |
-| `eoh/src/eoh/methods/management/pop_greedy.py` | Diversity-aware selection (optional) |
+This remains open, but lower priority than direct `A1` budget scaling.
 
-## Verification
+### 6. Narrow island revisit
 
-- Run a quick experiment with just strategies 1+3+5 and compare 3G test performance
-- Check that 4G+ performance doesn't regress
-- Monitor population diversity across generations (algorithm name variety, fitness spread)
+Broad island mode has already been tried and did not beat `A1`. The only plausible island follow-up still untested is:
+
+- restrict islands to the strongest families only (`QUETRA` / `rmpc_blend`)
+- add better Stage-B reevaluation or tie-breaks
+
+This is a low-priority niche follow-up, not a mainline bet.
+
+## Deprioritized Or Effectively Tested Already
+
+The following directions have enough negative evidence that they should not be the default next bet:
+
+- `dataset_balanced_mean` as the main route forward
+- held-out train/validation objectives as primary selectors
+- another broad new-seed screening wave
+- broad island-mode orchestration with many seed families
+- CVaR-style objectives as the main axis
+- diversity / niching as the main axis
+- feedback-only or prompt-only tweaks as the main axis
+- any oracle / future-bandwidth seed or deployable target
+
+## Updated Action Plan
+
+**Current practical baseline:**
+1. Keep `20260402-3g-hardset-round2-a1-r1` (`QUETRA + pop25 + mean = 88.8697`) as the main internal 3G baseline.
+
+**Highest-priority untried directions:**
+2. Spend the next 3G budget on `A1` scaling first, before opening a new objective family.
+3. If a second line is needed, test a **narrow hard-case-aware tie-break / gate** on top of plain `mean`.
+4. Only then consider:
+   - `S1` selection-fidelity upgrades
+   - or a targeted behavior-study-to-seed / prompt conversion loop
+
+**Lower-priority but still open:**
+5. `C1` temporary curriculum
+6. narrow two-family island revisit
+
+**Not recommended as the next default move:**
+7. another validation-objective round
+8. another broad seed-screening round
+9. another broad island round
+10. CVaR / diversity / feedback redesign as the primary hypothesis
