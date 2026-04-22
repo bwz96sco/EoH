@@ -162,7 +162,7 @@ Common message prefixes in the actual codebase:
 - `">> Stop with ..."` for fatal configuration validation, for example `eoh/src/eoh/llm/interface_LLM.py:43-45`
 - `">> Error in ..."` for fatal API bootstrap failure, for example `eoh/src/eoh/llm/interface_LLM.py:71-73`
 - `"Error: ..."` for recoverable parse/retry diagnostics in debug mode, for example `eoh/src/eoh/methods/eoh/eoh_evolution.py:230-231`
-- `"Parallel time out ."` for joblib worker-budget failures, at `eoh/src/eoh/methods/eoh/eoh_interface_EC.py:443-446`
+- `"Parallel worker timeout (budget=...s): ..."` for true joblib worker-budget timeouts, and `"Parallel worker failure (budget=...s): ..."` when the parallel layer raises a non-timeout exception, at `eoh/src/eoh/methods/eoh/eoh_interface_EC.py:443-452`
 - `"duplicated code, wait 1 second and retrying ... "` for duplicate offspring retries, at `eoh/src/eoh/methods/eoh/eoh_interface_EC.py:330-335`
 
 ### Category E: Timeout summary and sink path

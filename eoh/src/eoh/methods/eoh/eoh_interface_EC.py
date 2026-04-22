@@ -441,18 +441,19 @@ class InterfaceEC():
                 for offspring_index in range(self.pop_size)
             )
         except Exception as e:
-            if self.debug:
-                print(f"Error: {e}")
-            print("Parallel time out .")
+            error_detail = f"{type(e).__name__}: {e}"
+            is_timeout = isinstance(e, (TimeoutError, multiprocessing.TimeoutError))
+            failure_label = "Parallel worker timeout" if is_timeout else "Parallel worker failure"
+            print(f"{failure_label} (budget={self.parallel_timeout}s): {error_detail}")
             self._write_timeout_record(
                 self._diagnostic_record(
                     generation=generation,
                     operator=operator,
                     offspring_index=None,
-                    root_cause="worker_budget_timeout",
+                    root_cause="worker_budget_timeout" if is_timeout else "unexpected_error",
                     total_elapsed_ms=(time.monotonic() - start_time) * 1000,
-                    detail=f"{type(e).__name__}: {e}",
-                    event="worker_budget_timeout",
+                    detail=error_detail,
+                    event="worker_budget_timeout" if is_timeout else "worker_failure",
                 )
             )
             
