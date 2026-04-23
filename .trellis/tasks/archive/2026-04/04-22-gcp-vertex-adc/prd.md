@@ -36,10 +36,10 @@ Enable EoH to run ABR experiments against Google Cloud Vertex AI using Applicati
 
 ## Acceptance Criteria
 
-* [ ] EoH can authenticate to Vertex AI via ADC.
-* [ ] A direct OpenAI-compatible Vertex request succeeds.
-* [ ] An ABR smoke run reaches Phase 1 and completes seed initialization.
-* [ ] We have a documented conclusion on whether Vertex is practically usable for EoH evolution.
+* [x] EoH can authenticate to Vertex AI via ADC.
+* [x] A direct OpenAI-compatible Vertex request succeeds.
+* [x] An ABR smoke run reaches Phase 1 and completes seed initialization.
+* [x] We have a documented conclusion on whether Vertex is practically usable for EoH evolution.
 
 ## Definition of Done
 
@@ -59,3 +59,14 @@ Enable EoH to run ABR experiments against Google Cloud Vertex AI using Applicati
 * Touched code lives under `eoh/src/eoh/llm/`.
 * Experiment validation uses the repo-local ABR workflow wrapper and canonical run roots.
 * Current experimental worktree: `/Users/zhangbowen/Projects/EoH-exp-gcp-vertex`
+
+## Outcome
+
+Vertex ADC integration is now workable for EoH without service-account key files. The OpenAI-compatible Vertex endpoint can be used through `LLM_API_AUTH_MODE=gcloud-adc`, and long-running server jobs can refresh bearer tokens via `gcloud auth application-default print-access-token`.
+
+Practical experiment conclusion:
+
+* `google/gemini-2.5-flash` is the best Vertex model tested for the fixed `QUETRA + pop5 + mean` 3G recipe, reaching `ABRBench-3G = 83.5658`.
+* `google/gemini-2.5-pro` is slower and slightly worse at `81.6910`.
+* `google/gemini-2.5-flash-lite` runs cleanly but underperforms badly at `75.6869`.
+* Vertex is now a usable backend for EoH, but it still trails the historical grok/mainline 3G bests and should be treated as a viable alternative path rather than the new default winner.

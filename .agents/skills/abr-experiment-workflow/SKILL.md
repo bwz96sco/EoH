@@ -36,6 +36,22 @@ This ensures:
 
 For remote servers: push the branch, clone or pull it on the server, and run from there. Results can be tracked via the global tracker regardless of which checkout produced them.
 
+### Checkout Naming Convention
+
+Use stable, predictable checkout roots instead of ad hoc directories.
+
+- Primary local checkout: repo root itself (for this project, the shared source of truth is the main `EoH` checkout).
+- Local experiment worktrees: sibling directories named `EoH-exp-<campaign-or-variant>`.
+- Primary remote checkout: a stable shared clone such as `/root/code/EoH-repro`.
+- Remote experiment checkouts: `/root/code/exp-<campaign-or-variant>`.
+
+Rules:
+
+1. Do not mix multiple unrelated naming schemes on the same machine.
+2. If a remote run needs code isolation, create a dedicated `exp-...` checkout instead of reusing the primary remote clone.
+3. If a run does **not** need code isolation, prefer the primary remote checkout and keep results under that checkout's `experiments/results/<run-id>/`.
+4. Regardless of where the run executed, sync the final artifacts back into the main local checkout under `experiments/results/<run-id>/` and `experiments/campaign_data/<series>/` so the repo keeps one canonical history.
+
 Important distinction:
 
 - **Isolate code changes** in worktrees / branches / remote experiment checkouts.
@@ -165,6 +181,14 @@ Related non-canonical state:
 - `examples/user_abr/seed_cache/<dataset>/...`: seed generation cache
 - `examples/user_abr/seed_cache/<dataset>/name-<seed>/...`: seed-specific cache
 - `examples/user_abr/seed_cache/_seed_specs/...`: generated seed-json specs for `runEoH.py`
+
+Launcher/log rule:
+
+- Do **not** write ad hoc launcher logs like `.launch-*.log` at repo root.
+- If a detached launcher log is needed, place it under the canonical run root:
+  `experiments/results/<run-id>/logs/launcher.log`
+- `full_pipeline.log` under the same `logs/` directory remains the primary source of truth.
+- If you cannot route a launcher's stdout/stderr into the canonical run log tree, do not introduce a separate launcher log at all.
 
 ## Concurrency Rules
 
@@ -316,6 +340,8 @@ python3 experiments/update_global_tracker.py \
 
 4. **Autonomous agents**: Codex or other agents running experiments remotely MUST push tracker updates to the shared branch so other agents can see what ran. Set `ABR_CAMPAIGN` so the run is associated with the correct campaign.
 5. **Result retrieval**: After remote runs complete, either copy `results_summary.csv` to the local `experiments/results/<run-id>/analysis/` or use the `--result` flag to manually record the key metric.
+
+6. **No repo-root launch logs**: Remote checkouts follow the same rule as local ones. Keep launcher output under `experiments/results/<run-id>/logs/` and delete transient repo-root `.launch-*` files instead of letting them accumulate.
 
 ## Multi-Stage Experiments
 

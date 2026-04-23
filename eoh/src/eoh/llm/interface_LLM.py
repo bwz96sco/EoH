@@ -1,3 +1,5 @@
+import os
+
 from ..llm.api_general import InterfaceAPI
 from ..llm.api_local_llm import InterfaceLocalLLM
 
@@ -51,7 +53,21 @@ class InterfaceLLM:
         else:
             print('remote llm api is used ...')
 
-            if self.api_key == None or self.api_endpoint ==None or self.api_key == 'xxx' or self.api_endpoint == 'xxx':
+            auth_mode = os.environ.get("LLM_API_AUTH_MODE", "").strip().lower()
+            uses_dynamic_auth = auth_mode == "gcloud-adc"
+            if self.api_key is not None and self.api_key.strip().lower() in {
+                "gcloud-adc",
+                "vertex-adc",
+                "adc",
+                "gcp-adc",
+            }:
+                uses_dynamic_auth = True
+
+            invalid_endpoint = self.api_endpoint == None or self.api_endpoint == 'xxx'
+            invalid_api_key = (
+                self.api_key == None or self.api_key == 'xxx' or self.api_key.strip() == ''
+            )
+            if invalid_endpoint or (invalid_api_key and not uses_dynamic_auth):
                 print(">> Stop with wrong API setting: Set api_endpoint (e.g., api.chat...) and api_key (e.g., kx-...) !")
                 exit()
 

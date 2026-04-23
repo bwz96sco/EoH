@@ -1,6 +1,8 @@
 import http.client
 import json
+import os
 import socket
+import subprocess
 import time
 from urllib.parse import urlparse
 
@@ -25,6 +27,9 @@ class InterfaceAPI:
         self._parsed_endpoint_cache = self._parsed_endpoint()
         self._request_path_cache = self._build_request_path(self._parsed_endpoint_cache)
         self._connection = None
+        self._auth_mode = self._resolve_auth_mode()
+        self._access_token = None
+        self._access_token_deadline = 0.0
         self.last_request_meta = {
             "status": "not_started",
             "attempts": 0,
@@ -53,14 +58,6 @@ class InterfaceAPI:
             }
         )
 
-        headers = {
-            "Authorization": "Bearer " + self.api_key,
-            "User-Agent": "Apifox/1.0.0 (https://apifox.com)",
-            "Content-Type": "application/json",
-            "Connection": "keep-alive",
-            "x-api2d-no-cache": 1,
-        }
-
         response = None
         start_time = time.monotonic()
         for attempt in range(1, self.n_trial + 1):
@@ -77,10 +74,13 @@ class InterfaceAPI:
             attempt_start = time.monotonic()
             try:
                 conn = self._get_connection()
+                headers = self._build_headers()
                 conn.request("POST", self._request_path_cache, payload_explanation, headers)
                 res = conn.getresponse()
                 data = res.read()
                 if res.status >= 400:
+                    if res.status in {401, 403}:
+                        self._invalidate_access_token()
                     raise RuntimeError(
                         f"HTTP {res.status} from LLM API. Body: {data[:500]}"
                     )
@@ -153,12 +153,79 @@ class InterfaceAPI:
     def _request_path(self):
         return self._request_path_cache
 
+    def _resolve_auth_mode(self):
+        mode = os.environ.get("LLM_API_AUTH_MODE", "").strip().lower()
+        if mode:
+            return mode
+
+        api_key = (self.api_key or "").strip().lower()
+        if api_key in {"gcloud-adc", "vertex-adc", "adc", "gcp-adc"}:
+            return "gcloud-adc"
+
+        return "static"
+
+    def _build_headers(self):
+        return {
+            "Authorization": "Bearer " + self._resolve_bearer_token(),
+            "User-Agent": "Apifox/1.0.0 (https://apifox.com)",
+            "Content-Type": "application/json",
+            "Connection": "keep-alive",
+            "x-api2d-no-cache": 1,
+        }
+
+    def _resolve_bearer_token(self):
+        if self._auth_mode != "gcloud-adc":
+            return self.api_key
+
+        now = time.monotonic()
+        if self._access_token and now < self._access_token_deadline:
+            return self._access_token
+
+        command_timeout_s = max(5, min(self.request_timeout_s, 30))
+        try:
+            completed = subprocess.run(
+                ["gcloud", "auth", "application-default", "print-access-token"],
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=command_timeout_s,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to refresh Google Cloud access token: {exc}"
+            ) from exc
+
+        token = completed.stdout.strip()
+        if completed.returncode != 0 or not token:
+            detail = completed.stderr.strip() or completed.stdout.strip() or "empty output"
+            raise RuntimeError(
+                f"Failed to refresh Google Cloud access token via gcloud ADC: {detail}"
+            )
+
+        ttl_raw = os.environ.get("LLM_GCLOUD_ACCESS_TOKEN_TTL_S", "3000")
+        try:
+            ttl_s = max(60, int(ttl_raw))
+        except ValueError:
+            ttl_s = 3000
+
+        self._access_token = token
+        self._access_token_deadline = time.monotonic() + ttl_s
+        return token
+
+    def _invalidate_access_token(self):
+        if self._auth_mode != "gcloud-adc":
+            return
+        self._access_token = None
+        self._access_token_deadline = 0.0
+
     def _build_request_path(self, parsed):
         base_path = parsed.path.rstrip("/")
         if not base_path:
             return "/v1/chat/completions"
         if base_path.endswith("/chat/completions"):
             return base_path
+        if base_path.endswith("/openapi"):
+            return f"{base_path}/chat/completions"
         if base_path.endswith("/v1"):
             return f"{base_path}/chat/completions"
         return f"{base_path}/v1/chat/completions"
