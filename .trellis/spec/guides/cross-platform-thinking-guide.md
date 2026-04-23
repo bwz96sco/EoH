@@ -42,6 +42,7 @@ Questions:
 - Is the problem object picklable if the platform falls back to `spawn`?
 - Does the evaluator capture dynamically imported modules or local lambdas?
 - Will your new code behave differently if memory is copied (`fork`) versus reconstructed (`spawn`)?
+- Does any object captured by `joblib.Parallel(...)` retain a live network client, socket, or HTTP connection that must be dropped and rebuilt per worker?
 
 ABR is a good stress case because `ABRProblem` dynamically loads SABR modules from file paths in `examples/user_abr/prob.py:142-174`.
 
@@ -149,6 +150,7 @@ Questions:
 
 - [ ] Path resolution is based on `__file__` or repo root, not shell cwd
 - [ ] `multiprocessing` behavior was considered for both `fork`-capable and `spawn`-only platforms
+- [ ] Objects sent through `joblib` remain pickle-safe and do not carry live socket/connection state
 - [ ] Timeout budgets are aligned across request, total LLM phase, evaluation, and joblib worker layers
 - [ ] Remote endpoints and local inference URLs are not being treated as the same configuration shape
 - [ ] Any external code under `env/` is imported through stable repo-relative paths

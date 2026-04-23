@@ -387,7 +387,14 @@ class InterfaceEC():
                 llm_meta = dict(getattr(self.evol, "last_generation_meta", {}))
                 if "elapsed_ms" not in llm_meta:
                     llm_meta["elapsed_ms"] = round((time.monotonic() - start_time) * 1000, 3)
-            root_cause = llm_meta.get("status") or eval_meta.get("status") or "unexpected_error"
+            eval_status = eval_meta.get("status")
+            llm_status = llm_meta.get("status")
+            if eval_status and eval_status != "success":
+                root_cause = eval_status
+            elif llm_status and llm_status != "success":
+                root_cause = llm_status
+            else:
+                root_cause = "unexpected_error"
             if root_cause not in {"llm_timeout", "parse_error", "llm_error", "eval_timeout", "eval_error"}:
                 root_cause = "unexpected_error"
 

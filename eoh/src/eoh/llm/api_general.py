@@ -32,6 +32,16 @@ class InterfaceAPI:
             "error_type": None,
         }
 
+    def __getstate__(self):
+        """Drop live connection state so joblib workers can unpickle safely."""
+        state = self.__dict__.copy()
+        state["_connection"] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._connection = None
+
     def get_response(self, prompt_content):
         payload_explanation = json.dumps(
             {

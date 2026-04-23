@@ -255,6 +255,8 @@ The parallel timeout is computed as: `self.parallel_timeout = self.llm_total_tim
 self.parallel_timeout = self.llm_total_timeout_s + self.timeout + 15
 ```
 
+Worker submission has a serialization boundary before any timeout logic runs. Objects captured by `Parallel(...)` must remain pickle-safe for the selected backend. In particular, remote LLM clients must not retain live sockets or HTTP connection objects in the serialized state. The current `InterfaceAPI` implementation drops `_connection` during pickling so each worker can lazily rebuild its own connection after deserialization.
+
 ---
 
 ## Three-Layer Timeout System
@@ -341,7 +343,7 @@ if process.is_alive():
     }
 ```
 
-**On timeout**: Process is terminated, fitness is `None`, and `eval_timeout` is recorded in diagnostics.
+**On timeout**: Process is terminated, fitness is `None`, and `eval_timeout` is recorded in diagnostics. When `get_offspring()` later maps the failure into a diagnostics `root_cause`, this evaluation status must override any earlier `llm_status="success"`.
 
 ### Outer Boundary: Parallel Worker Budget (`parallel_timeout`)
 
@@ -466,7 +468,14 @@ Failure path:
 except Exception as e:
     if not llm_meta:
         llm_meta = dict(getattr(self.evol, "last_generation_meta", {}))
-    root_cause = llm_meta.get("status") or eval_meta.get("status") or "unexpected_error"
+    eval_status = eval_meta.get("status")
+    llm_status = llm_meta.get("status")
+    if eval_status and eval_status != "success":
+        root_cause = eval_status
+    elif llm_status and llm_status != "success":
+        root_cause = llm_status
+    else:
+        root_cause = "unexpected_error"
     if root_cause not in {"llm_timeout", "parse_error", "llm_error", "eval_timeout", "eval_error"}:
         root_cause = "unexpected_error"
 
