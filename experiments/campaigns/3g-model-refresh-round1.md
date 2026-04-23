@@ -38,6 +38,11 @@
 | K1 | Source the current remote `examples/user_abr/.env` as-is (`https://ai.hybgzs.com`, `moonshotai/kimi-k2-thinking`, `EXP_N_PROC=5`) and run a minimal `QUETRA pop5` smoke | failed | `20260422-kimi-env-smoke-r1` | failed immediately in `check LLM API` with repeated upstream `404`; no usable generation artifact formed |
 | K2 | Keep the same provider endpoint but switch to `moonshotai/kimi-k2.5`, then run a cache-reuse `QUETRA pop5` smoke with `EXP_N_PROC=1` | failed | `20260422-kimi25-smoke-n1-r1` | formed `population_generation_0.json` but then showed no healthy phase progress; separate direct long-prompt probe on the same model returned immediate `403` |
 | K3 | Run the full intended comparison config on `moonshotai/kimi-k2.5`: `QUETRA + pop5 + gen10 + EXP_N_PROC=1` | failed | `20260422-kimi25-full-r1` | stopped as unhealthy; no meaningful evolution progress appeared before a direct long-prompt probe confirmed the provider rejects EoH-scale prompts with `403` |
+| V1 | Switch to Vertex AI via ADC and run the full `QUETRA + pop5 + gen10` recipe with `google/gemini-2.5-flash-lite` on `heyun` | completed | `20260422-gcp-vertex-flashlite-heyun-r1` | completed cleanly at `ABRBench-3G = 75.6869`; pipeline health was good, but result quality stayed far below old `QUETRA pop5 = 86.9527` and `A1 = 88.8697` |
+| V2 | Keep the same Vertex route and recipe, but replace only the model with `google/gemini-2.5-pro` to test whether quality improves over `flash-lite` | completed | `20260422-gcp-vertex-pro-heyun-r1` | `ABRBench-3G = 81.6910`; clean full run and clearly better than `flash-lite`, but still below old `QUETRA pop5 = 86.9527` and `A1 = 88.8697` |
+| V3 | Keep the same Vertex route and recipe, switch to `google/gemini-2.5-flash`, and increase parallelism to `EXP_N_PROC=2` to test whether higher throughput improves search efficiency without destabilizing the run | failed | `20260423-gcp-vertex-flash-n2-heyun-r1` | unhealthy Phase 1 run: every operator immediately hit `Parallel time out`, no meaningful evolution happened beyond carrying forward the cached seed best |
+| V4 | Keep the same Vertex route and recipe, switch to `google/gemini-2.5-flash`, and keep `EXP_N_PROC=1` for a clean full-run quality comparison against `2.5-pro` | completed | `20260423-gcp-vertex-flash-n1-heyun-r1` | `ABRBench-3G = 83.5658`; clean full run, slightly better than `2.5-pro`, but still below old `QUETRA pop5 = 86.9527` and `A1 = 88.8697` |
+| S1 | Keep `QUETRA + pop5 + gen10`, switch to `siliconflow.cn` `Pro/zai-org/GLM-5.1`, and relax timeouts to `LLM_REQUEST_TIMEOUT_S=300` / `LLM_TOTAL_TIMEOUT_S=600` while keeping `EXP_N_PROC=2` | failed | `20260422-3g-model-refresh-round1-q4-r1` | progressed through seed initialization and finished the first `e1` operator, but after ~18 minutes had only just entered `e2`; manual stop prevented a complete experiment result, so this route remains too slow for an unattended local full run under the current settings |
 
 ## Analysis
 
@@ -93,23 +98,58 @@ Interpretation:
    - a direct probe using the same ~14k-character prompt from `experiments/grok2api_probe_sample_prompt.txt` against `moonshotai/kimi-k2.5` returned immediate upstream `403`
    - the cache-reuse smoke `K2` only reached `population_generation_0`, then stopped showing healthy progress
    - the full `gen10` formal attempt `K3` was therefore stopped early as unhealthy rather than being allowed to burn a long run with no trustworthy chance of completion
+12. Vertex AI is technically viable as a backend, but `google/gemini-2.5-flash-lite` is not a good ABR-EoH model under the fixed `QUETRA pop5 mean` recipe.
+   - `V1` is the first route in this campaign that both ran a full `gen10` evolution and completed the full evaluation/analysis pipeline without transport health issues
+   - the run advanced normally through `population_generation_10`, evaluated all `3G` datasets, and wrote a clean `results_summary.csv`
+   - despite that healthier infrastructure story, its quality was still poor: `ABRBench-3G = 75.6869`
+   - that is effectively tied with `Q1`'s `z-ai/glm-5.1` result and remains far below the historical `QUETRA pop5 = 86.9527`
+   - so the limiting factor on `V1` is model output quality / usable mutation quality, not API health
+13. `google/gemini-2.5-pro` is materially better than `flash-lite`, but still not good enough to replace the historical `grok` result.
+   - `V2` also completed a full clean `gen10` run on Vertex, this time using server-side ADC refresh on `heyun`
+   - final quality improved to `ABRBench-3G = 81.6910`, which is `+6.0041` over `flash-lite`
+   - `V2` beat `QUETRA` on all `6/6` in-distribution datasets and beat `RobustMPC` on `4/6`
+   - however, it is still `-5.2617` below the historical `QUETRA pop5 = 86.9527`, and `-7.1787` below `A1 = 88.8697`
+   - practical conclusion: Vertex + `2.5-pro` is usable infrastructure and a meaningfully better model than `flash-lite`, but it is still not a new 3G best path
+14. Raising `EXP_N_PROC` for Vertex `2.5-flash` is not a free throughput win.
+   - direct prompt probes already showed `2.5-flash` can answer the real first `e1` prompt successfully
+   - however, the first attempt to exploit that with `EXP_N_PROC=2` (`V3`) failed immediately at the operator level
+   - every operator in the first few populations reported `Parallel time out`, and the population objective stayed pinned to the carried-forward seed best
+   - so the failure mode here is not model quality, but timeout / worker-budget incompatibility under concurrent EoH use
+15. The real unresolved comparison is still `2.5-flash` versus `2.5-pro` at the same conservative concurrency.
+   - `V3` showed that `EXP_N_PROC=2` is not a meaningful comparison point under the current timeout model
+   - the correct apples-to-apples follow-up is therefore `V4`: `2.5-flash` with the same `EXP_N_PROC=1` / cached-seed setup used by `V2`
+16. `google/gemini-2.5-flash` is currently the best-performing Vertex model we tested for this exact 3G recipe.
+   - `V4` completed a full clean `gen10` run with `EXP_N_PROC=1` and server-side ADC refresh on `heyun`
+   - final quality was `ABRBench-3G = 83.5658`
+   - that is `+1.8748` over `2.5-pro` and `+7.8789` over `flash-lite`
+   - `V4` beat `QUETRA` on all `6/6` in-distribution datasets and beat `RobustMPC` on `5/6`
+   - however, it is still `-3.3869` below historical `QUETRA pop5 = 86.9527`, and `-5.3039` below `A1 = 88.8697`
+   - practical conclusion: if Vertex is the chosen backend, `2.5-flash` at `EXP_N_PROC=1` is the current best option, but it still does not beat the older grok / mainline 3G references
 
 Tracked artifacts:
 
 - local run root: [experiments/results/20260421-3g-model-refresh-round1-q1-r1](/Users/zhangbowen/Projects/EoH/experiments/results/20260421-3g-model-refresh-round1-q1-r1)
 - copied summary: [Q1_results_summary.csv](/Users/zhangbowen/Projects/EoH/experiments/campaign_data/3g-model-refresh-round1/Q1_results_summary.csv)
+- Vertex flash-lite run root: [experiments/results/20260422-gcp-vertex-flashlite-heyun-r1](/Users/zhangbowen/Projects/EoH/experiments/results/20260422-gcp-vertex-flashlite-heyun-r1)
+- copied Vertex summary: [V1_vertex_flashlite_results_summary.csv](/Users/zhangbowen/Projects/EoH/experiments/campaign_data/3g-model-refresh-round1/V1_vertex_flashlite_results_summary.csv)
+- Vertex pro run root: [experiments/results/20260422-gcp-vertex-pro-heyun-r1](/Users/zhangbowen/Projects/EoH/experiments/results/20260422-gcp-vertex-pro-heyun-r1)
+- copied Vertex pro summary: [V2_vertex_pro_results_summary.csv](/Users/zhangbowen/Projects/EoH/experiments/campaign_data/3g-model-refresh-round1/V2_vertex_pro_results_summary.csv)
+- Vertex flash run root: [experiments/results/20260423-gcp-vertex-flash-n1-heyun-r1](/Users/zhangbowen/Projects/EoH/experiments/results/20260423-gcp-vertex-flash-n1-heyun-r1)
+- copied Vertex flash summary: [V4_vertex_flash_results_summary.csv](/Users/zhangbowen/Projects/EoH/experiments/campaign_data/3g-model-refresh-round1/V4_vertex_flash_results_summary.csv)
 
 ## Next Steps
 
-1. Do not promote this `.env` provider/model route into later 3G work as the default baseline.
-2. Before drawing a model-causality conclusion, establish one clean provider-stability control path first.
-3. For `grok`, the next bottleneck to isolate is not raw reachability but response quality:
+1. `flash-lite` is now dominated and should not be revisited.
+2. Do not raise Vertex `2.5-flash` above `EXP_N_PROC=1` without first changing the parallel timeout budget or EoH worker strategy; `EXP_N_PROC=2` is immediately unhealthy under the current setup.
+3. If you keep Vertex as the experimental backend, prefer `2.5-flash` over both `2.5-pro` and `flash-lite`.
+4. Do not treat the Vertex route as a new overall baseline yet, because even the best tested Vertex model (`2.5-flash`) still trails the historical `QUETRA pop5` result.
+5. For `grok`, the next bottleneck to isolate is not raw reachability but response quality:
    - why `200`/`success` responses can still contain empty content
    - whether `workers=1` should remain the default stable service setting
    - whether empty-content responses shrink enough under `workers=1` to justify a full formal rerun
-4. For NVIDIA, treat this route as an unstable provider path until a small health-gated smoke run can advance beyond the first generation.
-5. Keep the historical `QUETRA pop5` and `A1 = QUETRA + pop25 + mean` routes as the meaningful 3G references.
-6. After the latest `grok2api` upgrade, keep the local service at `workers=1`, but assume only `EXP_N_PROC=1` is even eligible for recovery testing until a fresh smoke run can clear the initial API check without repeated `429/403`.
-7. Do not interpret the upgraded service as “fully fixed”: the gateway probe is healthier, but the first real EoH smokes still show the experiment path is gated by upstream refusal pressure rather than local parser or empty-response bugs.
-8. Treat the current remote `.env` Kimi route as incompatible until its endpoint/model pair can pass the initial API check without upstream `404`.
-9. For the same endpoint, `moonshotai/kimi-k2.5` is chat-compatible but still not EoH-compatible under current prompt sizes, because long prompts are rejected with upstream `403`.
+6. For NVIDIA, treat that route as an unstable provider path until a small health-gated smoke run can advance beyond the first generation.
+7. Keep the historical `QUETRA pop5` and `A1 = QUETRA + pop25 + mean` routes as the meaningful 3G references.
+8. After the latest `grok2api` upgrade, keep the local service at `workers=1`, but assume only `EXP_N_PROC=1` is even eligible for recovery testing until a fresh smoke run can clear the initial API check without repeated `429/403`.
+9. Do not interpret the upgraded service as “fully fixed”: the gateway probe is healthier, but the first real EoH smokes still show the experiment path is gated by upstream refusal pressure rather than local parser or empty-response bugs.
+10. Treat the current remote `.env` Kimi route as incompatible until its endpoint/model pair can pass the initial API check without upstream `404`.
+11. For the same endpoint, `moonshotai/kimi-k2.5` is chat-compatible but still not EoH-compatible under current prompt sizes, because long prompts are rejected with upstream `403`.
