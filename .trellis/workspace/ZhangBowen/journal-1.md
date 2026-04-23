@@ -181,3 +181,37 @@ Archived completed 3G validation and seed-round2 tasks; island experiment remain
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: Archive ABR EoH joblib pickling fix
+
+**Date**: 2026-04-23
+**Task**: Archive ABR EoH joblib pickling fix
+**Branch**: `abr-remote-repro-20260328`
+
+### Summary
+
+Archived the ABR EoH joblib pickling regression task after the code fix commit and recorded the focused verification and bookkeeping updates.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b564941` | (see git log) |
+| `9c07861` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

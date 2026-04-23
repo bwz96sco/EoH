@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 3
-- **Last Active**: 2026-04-16
+- **Total Sessions**: 4
+- **Last Active**: 2026-04-23
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~183 | Active |
+| `journal-1.md` | ~217 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 4 | 2026-04-23 | Archive ABR EoH joblib pickling fix | `b564941`, `9c07861` | `abr-remote-repro-20260328` |
 | 3 | 2026-04-16 | Archive completed 3G experiment tasks | `d6365b9` | `abr-remote-repro-20260328` |
 | 2 | 2026-03-27 | Finalize ABR Reporting Privacy And Backup Workflow | `37760ac`, `920ef51` | `main` |
 | 1 | 2026-03-27 | Formalize ABR Experiment Workflow And Record Model Runs | `3e3b2f4`, `ef353c0` | `main` |
