@@ -215,3 +215,36 @@ Archived the ABR EoH joblib pickling regression task after the code fix commit a
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: Finalize Vertex ADC integration and cleanup
+
+**Date**: 2026-04-23
+**Task**: Finalize Vertex ADC integration and cleanup
+**Branch**: `abr-remote-repro-20260328`
+
+### Summary
+
+Merged Vertex ADC support into the main branch, tightened ABR experiment workflow rules for canonical launcher logs and checkout naming, cleaned /root/code/exp-gcp-vertex-adc, and archived the related Trellis tasks.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `52b3da2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
