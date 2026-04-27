@@ -21,3 +21,5 @@ pylsp/
 .claude/scheduled_tasks.lock
 .session-id
 .agent-log
+# Local credential files and backups
+**/.env*
