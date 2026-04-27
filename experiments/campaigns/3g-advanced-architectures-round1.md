@@ -36,6 +36,8 @@ Secondary reference:
 |-------|------------|--------|--------|--------|
 | V1 | New seed family `virtual_sensor`: fixed indicator scaffold + fixed conservative controller | failed | `20260421-3g-advanced-architectures-round1-v1-r1` | unhealthy launch; reached `e1` but hit repeated `BrokenPipeError` / upstream `429` before a valid first generation formed |
 | P1 | New seed family `rmpc_predictor`: fixed exact MPC rollout + new regime-aware predictor scaffold | failed | `20260421-3g-advanced-architectures-round1-p1-r1` | reached `5/10` populations, but repeated `BrokenPipeError` / upstream `429` kept the run dirty, so no trustworthy result was produced |
+| V2-local-deepseek-r1 | Rerun `virtual_sensor` locally through the current `.env` DeepSeek route from the experiment worktree | failed | `20260427-3g-advanced-architectures-v2-deepseek-local-r1` | invalid health run: old experiment-branch LLM client hung at `e1 [1/5]` after `population_generation_0`; stopped before `generation_1` |
+| V2-local-deepseek-r2 | Rerun `virtual_sensor` locally through DeepSeek after syncing the hard-timeout LLM client into the experiment worktree | running | `20260427-3g-advanced-architectures-v2-deepseek-local-r2` | healthy so far: `population_generation_1` and `pops_best/population_generation_1` formed cleanly, no `429` / HTTP / `Traceback` / `RemoteDisconnected` observed; run continues |
 
 ## Analysis Plan
 
@@ -50,9 +52,10 @@ Secondary reference:
 - Both are intentionally implemented as **seed families**, not new EoH problem types, so they can be tested inside the current pipeline with minimal cross-layer drift.
 - `V1` did not fail in a way that says much about the seed idea itself; it mainly reproduced the current grok transport instability (`BrokenPipe` + upstream `429`) under formal launch conditions.
 - `P1` made real evolutionary progress, unlike `V1`, but it still remained dirty throughout the run: repeated `BrokenPipeError` and upstream `429` were common deep into the population loop, so it also fails the health-gate standard for trustworthy evidence.
+- `V2-local-deepseek-r2` shows the local DeepSeek route is viable for at least the first full `virtual_sensor` generation once the hard-timeout LLM client is present in the experiment worktree. Early invalid offspring still appear (`Obj: None`), but the failure shape is parsing/quality noise rather than provider transport instability.
 
 ## Next Steps
 
-1. Do not rerun `V1` or `P1` until the grok path shows a cleaner launch profile again.
-2. Treat this whole architecture round as blocked by provider / transport instability rather than as a clean negative result on the seed ideas themselves.
-3. Deprioritize new architecture campaigns behind restoring experiment reliability, `A1` budget scaling, and narrower train-side tie-break work.
+1. Let `V2-local-deepseek-r2` finish before launching `P1`/`rmpc_predictor` on DeepSeek; running both concurrently would confound the provider-health signal.
+2. If `V2-local-deepseek-r2` completes cleanly, run the same local DeepSeek profile for `rmpc_predictor`.
+3. Keep treating the original `V1` / `P1` grok attempts as provider-contaminated, not clean negative evidence about the seed families.
