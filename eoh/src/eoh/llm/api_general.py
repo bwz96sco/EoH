@@ -3,6 +3,7 @@ import json
 import os
 import socket
 import subprocess
+import threading
 import time
 from urllib.parse import urlparse
 
@@ -73,16 +74,12 @@ class InterfaceAPI:
 
             attempt_start = time.monotonic()
             try:
-                conn = self._get_connection()
-                headers = self._build_headers()
-                conn.request("POST", self._request_path_cache, payload_explanation, headers)
-                res = conn.getresponse()
-                data = res.read()
-                if res.status >= 400:
-                    if res.status in {401, 403}:
+                status, data = self._request_with_hard_timeout(payload_explanation)
+                if status >= 400:
+                    if status in {401, 403}:
                         self._invalidate_access_token()
                     raise RuntimeError(
-                        f"HTTP {res.status} from LLM API. Body: {data[:500]}"
+                        f"HTTP {status} from LLM API. Body: {data[:500]}"
                     )
                 json_data = json.loads(data)
                 if "choices" not in json_data:
@@ -122,6 +119,43 @@ class InterfaceAPI:
                 continue
 
         return response
+
+    def _request_with_hard_timeout(self, payload):
+        """Execute HTTP request with a hard wall-clock timeout via threading.
+
+        The socket-level timeout on http.client can be defeated by servers that
+        send data in small chunks (e.g. Vertex AI with thinking models).  This
+        method enforces request_timeout_s as a true wall-clock deadline.
+        """
+        result = {}
+
+        def _do_request():
+            try:
+                conn = self._get_connection()
+                headers = self._build_headers()
+                conn.request("POST", self._request_path_cache, payload, headers)
+                res = conn.getresponse()
+                data = res.read()
+                result["status"] = res.status
+                result["data"] = data
+            except Exception as exc:
+                result["error"] = exc
+
+        t = threading.Thread(target=_do_request, daemon=True)
+        t.start()
+        t.join(timeout=self.request_timeout_s)
+
+        if t.is_alive():
+            # Thread still running — force-close the connection to unblock it
+            self._reset_connection()
+            raise TimeoutError(
+                f"Hard timeout after {self.request_timeout_s}s (server still processing)"
+            )
+
+        if "error" in result:
+            raise result["error"]
+
+        return result["status"], result["data"]
 
     def _parsed_endpoint(self):
         endpoint = self.api_endpoint.strip()
