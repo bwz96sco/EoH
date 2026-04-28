@@ -29,6 +29,7 @@ class InterfaceAPI:
         self._request_path_cache = self._build_request_path(self._parsed_endpoint_cache)
         self._connection = None
         self._auth_mode = self._resolve_auth_mode()
+        self._force_connection_close = self._read_bool_env("LLM_API_CONNECTION_CLOSE")
         self._access_token = None
         self._access_token_deadline = 0.0
         self.last_request_meta = {
@@ -155,6 +156,9 @@ class InterfaceAPI:
         if "error" in result:
             raise result["error"]
 
+        if self._force_connection_close:
+            self._reset_connection()
+
         return result["status"], result["data"]
 
     def _parsed_endpoint(self):
@@ -203,9 +207,13 @@ class InterfaceAPI:
             "Authorization": "Bearer " + self._resolve_bearer_token(),
             "User-Agent": "Apifox/1.0.0 (https://apifox.com)",
             "Content-Type": "application/json",
-            "Connection": "keep-alive",
+            "Connection": "close" if self._force_connection_close else "keep-alive",
             "x-api2d-no-cache": 1,
         }
+
+    @staticmethod
+    def _read_bool_env(name):
+        return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
     def _resolve_bearer_token(self):
         if self._auth_mode != "gcloud-adc":
