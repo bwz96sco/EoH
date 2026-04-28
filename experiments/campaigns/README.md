@@ -32,8 +32,9 @@
 | Series | Goal | Status | Best Result | Tracker |
 |--------|------|--------|-------------|---------|
 | 3G Baseline Models | 对比 3 个 LLM 模型在 3G+4G+ 表现 | completed | 4G+: ~1031, 3G: ~-122 | [tracker](3g-baseline-models.md) |
-| 3G Advanced Architectures Round 1 | 把 Gemini 提议里的 `virtual sensor` 和 `MPC predictor` 各自压成最小可跑 seed family，先验证结构化架构在 3G 上是否比自由逻辑 seed 更有信号 | blocked | V1/P1 都被 `BrokenPipe` / 上游 `429` 污染，未形成可信结果 | [tracker](3g-advanced-architectures-round1.md) |
-| 3G Model Refresh Round 1 | 在固定 `QUETRA pop5 mean` 路线上替换新的 `.env` API/model，观察同配置下的 3G 结果变化 | completed | best in campaign remains `grok workers=1` = 84.4; among tested Vertex models, `2.5-flash` is best at 83.6, ahead of `2.5-pro` 81.7 and `flash-lite` 75.7 | [tracker](3g-model-refresh-round1.md) |
+| 3G Advanced Architectures Round 1 | 把 Gemini 提议里的 `virtual sensor` 和 `MPC predictor` 各自压成最小可跑 seed family，先验证结构化架构在 3G 上是否比自由逻辑 seed 更有信号 | completed | `virtual_sensor` beat same-provider DeepSeek `quetra` control by +1.9 but stayed below historical `QUETRA pop5`; `rmpc_predictor` grok result completed at 82.3 but is transport-contaminated | [tracker](3g-advanced-architectures-round1.md) |
+| 3G Model Refresh Round 1 | 在固定 `QUETRA pop5 mean` 路线上替换新的 `.env` API/model，观察同配置下的 3G 结果变化 | completed | best tested backend is hybgzs `claude-sonnet-4-6-thinking` at 87.6, ahead of historical `QUETRA pop5` 87.0 but below A1 88.9 | [tracker](3g-model-refresh-round1.md) |
+| grok2api Connection Close Probe | 验证 grok2api `BrokenPipeError` 是否来自复用 keep-alive 连接，并测试 opt-in `Connection: close` 开关 | completed | one-generation `rmpc_predictor` probe finished with `BrokenPipeError=0` vs keep-alive full run's 107 BrokenPipe retries | [tracker](grok2api-connection-close-probe.md) |
 | 3G Seed Impact | 逐 seed 分析 EoH 在 3G 的表现差异 | completed | Quetra seed 87.0 | [tracker](3g-seed-impact.md) |
 | 3G Seed Round 2 | 设计更强的 online seed，并筛选是否能超过 QUETRA / A1 baseline | completed | S2=87.2; no new seed beat A1=88.9 | [tracker](3g-seed-round2.md) |
 | 3G Improve Round 1 | CVaR fitness + 种群/seed 改进 | completed | D=83.2 (未超 87.0) | [tracker](3g-improve-round1.md) |

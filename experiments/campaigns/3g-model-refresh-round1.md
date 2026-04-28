@@ -38,7 +38,7 @@
 | K1 | Source the current remote `examples/user_abr/.env` as-is (`https://ai.hybgzs.com`, `moonshotai/kimi-k2-thinking`, `EXP_N_PROC=5`) and run a minimal `QUETRA pop5` smoke | failed | `20260422-kimi-env-smoke-r1` | failed immediately in `check LLM API` with repeated upstream `404`; no usable generation artifact formed |
 | K2 | Keep the same provider endpoint but switch to `moonshotai/kimi-k2.5`, then run a cache-reuse `QUETRA pop5` smoke with `EXP_N_PROC=1` | failed | `20260422-kimi25-smoke-n1-r1` | formed `population_generation_0.json` but then showed no healthy phase progress; separate direct long-prompt probe on the same model returned immediate `403` |
 | K3 | Run the full intended comparison config on `moonshotai/kimi-k2.5`: `QUETRA + pop5 + gen10 + EXP_N_PROC=1` | failed | `20260422-kimi25-full-r1` | stopped as unhealthy; no meaningful evolution progress appeared before a direct long-prompt probe confirmed the provider rejects EoH-scale prompts with `403` |
-| H1 | After fixing the relay group, run the hybgzs route with `claude-sonnet-4-6-thinking`, `QUETRA + pop5 + gen10`, and `EXP_N_PROC=1` | running | `20260428-3g-model-refresh-hybgzs-sonnet46-n1-r1` | min API probe succeeded; launched from heyun primary checkout with cached `quetra-pop-5` seed and entered `OP: e1 [1/5]` |
+| H1 | After fixing the relay group, run the hybgzs route with `claude-sonnet-4-6-thinking`, `QUETRA + pop5 + gen10`, and `EXP_N_PROC=1` | completed | `20260428-3g-model-refresh-hybgzs-sonnet46-n1-r1` | `ABRBench-3G = 87.5744`; clean full run with 0 API errors and 2 invalid offspring; this is the best fixed-`QUETRA pop5` model-refresh result so far |
 | V1 | Switch to Vertex AI via ADC and run the full `QUETRA + pop5 + gen10` recipe with `google/gemini-2.5-flash-lite` on `heyun` | completed | `20260422-gcp-vertex-flashlite-heyun-r1` | completed cleanly at `ABRBench-3G = 75.6869`; pipeline health was good, but result quality stayed far below old `QUETRA pop5 = 86.9527` and `A1 = 88.8697` |
 | V2 | Keep the same Vertex route and recipe, but replace only the model with `google/gemini-2.5-pro` to test whether quality improves over `flash-lite` | completed | `20260422-gcp-vertex-pro-heyun-r1` | `ABRBench-3G = 81.6910`; clean full run and clearly better than `flash-lite`, but still below old `QUETRA pop5 = 86.9527` and `A1 = 88.8697` |
 | V3 | Keep the same Vertex route and recipe, switch to `google/gemini-2.5-flash`, and increase parallelism to `EXP_N_PROC=2` to test whether higher throughput improves search efficiency without destabilizing the run | failed | `20260423-gcp-vertex-flash-n2-heyun-r1` | unhealthy Phase 1 run: every operator immediately hit `Parallel time out`, no meaningful evolution happened beyond carrying forward the cached seed best |
@@ -126,6 +126,12 @@ Interpretation:
    - `V4` beat `QUETRA` on all `6/6` in-distribution datasets and beat `RobustMPC` on `5/6`
    - however, it is still `-3.3869` below historical `QUETRA pop5 = 86.9527`, and `-5.3039` below `A1 = 88.8697`
    - practical conclusion: if Vertex is the chosen backend, `2.5-flash` at `EXP_N_PROC=1` is the current best option, but it still does not beat the older grok / mainline 3G references
+17. The fixed relay-group hybgzs route with `claude-sonnet-4-6-thinking` is the first model-refresh run in this series to beat the historical `QUETRA pop5` reference.
+   - `H1` completed a full clean `gen10` run on heyun with cached `quetra-pop-5`, `EC_POP_SIZE=5`, `EC_N_POP=10`, and `EXP_N_PROC=1`
+   - final quality was `ABRBench-3G = 87.5744`
+   - that is `+0.6217` over historical `QUETRA pop5 = 86.9527`, and `-1.2953` below `A1 = 88.8697`
+   - transport health was good: `API error = 0`, `BrokenPipeError = 0`, and only `2` invalid offspring
+   - practical conclusion: among the provider/model refreshes tested so far, hybgzs + `claude-sonnet-4-6-thinking` is the best candidate backend for this fixed `QUETRA pop5 mean` recipe
 
 Tracked artifacts:
 
@@ -154,3 +160,4 @@ Tracked artifacts:
 9. Do not interpret the upgraded service as “fully fixed”: the gateway probe is healthier, but the first real EoH smokes still show the experiment path is gated by upstream refusal pressure rather than local parser or empty-response bugs.
 10. Treat the current remote `.env` Kimi route as incompatible until its endpoint/model pair can pass the initial API check without upstream `404`.
 11. For the same endpoint, `moonshotai/kimi-k2.5` is chat-compatible but still not EoH-compatible under current prompt sizes, because long prompts are rejected with upstream `403`.
+12. Use hybgzs + `claude-sonnet-4-6-thinking` as the current best model-refresh backend when the goal is a stable `QUETRA pop5` 3G run; follow-up work should test whether this backend also improves larger-pop or structured-seed campaigns.
