@@ -31,10 +31,10 @@
 
 | Label | Key Change | 4G+ QoE (avg) | Delta vs SABR | Run ID | Status |
 |-------|-----------|---------------|---------------|--------|--------|
-| r1 | first 4G+ in-domain evolution, gemini-2.5-flash | pending | pending | pending | planned |
+| r1 | first 4G+ in-domain evolution, gemini-2.5-flash | pending | pending | `20260427-081532-4gplus-a1-config-vertexflash-r1` | evolution-only completed |
 
 ## Analysis
-(to be filled after experiments complete)
+- `20260427-081532-4gplus-a1-config-vertexflash-r1` completed 10/10 EoH generations on `ABRBench-4G+`, but Phase 3/4 were skipped, so there is no `analysis/results_summary.csv` and no final QoE comparison yet.
 
 ## Next Steps
-(to be filled after experiments complete)
+- Run Phase 3/4 evaluation before treating the evolved heuristic as a completed 4G+ result.
