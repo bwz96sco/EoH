@@ -40,6 +40,7 @@ Secondary reference:
 | V2-local-deepseek-r1 | Rerun `virtual_sensor` locally through the current `.env` DeepSeek route from the experiment worktree | failed | `20260427-3g-advanced-architectures-v2-deepseek-local-r1` | invalid health run: old experiment-branch LLM client hung at `e1 [1/5]` after `population_generation_0`; stopped before `generation_1` |
 | V2-local-deepseek-r2 | Rerun `virtual_sensor` locally through DeepSeek after syncing the hard-timeout LLM client into the experiment worktree | stopped | `20260427-3g-advanced-architectures-v2-deepseek-local-r2` | stopped intentionally before completion when switching to heyun `EXP_N_PROC=2`; partial generations are not a final result |
 | V2-heyun-deepseek-n2-r3 | Rerun `virtual_sensor` on heyun through DeepSeek with the synced experiment branch and `EXP_N_PROC=2` | completed | `20260427-3g-advanced-architectures-v2-deepseek-heyun-n2-r3` | `ABRBench-3G avg = 85.8634`; completed 10/10 generations and full evaluation, no API/timeout failures, but produced 22 invalid offspring and stayed below `QUETRA pop5 = 86.9527` and `A1 = 88.8697` |
+| Control-main-deepseek-quetra-n2-r1 | Main checkout control without `virtual_sensor`: standard `quetra` seed through DeepSeek with `EXP_N_PROC=2` | running | `20260428-3g-main-deepseek-quetra-n2-r1` | launched to isolate provider/model effect from the `virtual_sensor` seed-family effect; `population_generation_0` exists, awaiting first completed generation |
 
 ## Analysis Plan
 
@@ -56,6 +57,7 @@ Secondary reference:
 - `P1` made real evolutionary progress, unlike `V1`, but it still remained dirty throughout the run: repeated `BrokenPipeError` and upstream `429` were common deep into the population loop, so it also fails the health-gate standard for trustworthy evidence.
 - `V2-local-deepseek-r2` shows the local DeepSeek route is viable for at least the first full `virtual_sensor` generation once the hard-timeout LLM client is present in the experiment worktree. Early invalid offspring still appear (`Obj: None`), but the failure shape is parsing/quality noise rather than provider transport instability.
 - `V2-heyun-deepseek-n2-r3` is the first completed clean DeepSeek run for this campaign. It confirms the provider path and `EXP_N_PROC=2` are operational, but the `virtual_sensor` seed family did not beat the low-budget `QUETRA pop5` reference. Treat this as a negative quality signal for `virtual_sensor` under this budget, not as a provider failure.
+- `Control-main-deepseek-quetra-n2-r1` is needed because DeepSeek had not yet been tested on the main-checkout seed set without the experimental `virtual_sensor` family. Compare its final result directly against `V2-heyun-deepseek-n2-r3` to separate provider/model behavior from seed-family behavior.
 
 ## Next Steps
 
