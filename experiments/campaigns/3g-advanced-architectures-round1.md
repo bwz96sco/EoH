@@ -21,6 +21,11 @@ Secondary reference:
 - Config: `QUETRA + pop25 + mean`
 - Best known result: `88.8697`
 
+`rmpc_predictor` reference:
+- `20260330-140417-seed-impact-pop5-seed-abrbench-3g-robust_mpc`
+- Config: `robust_mpc + pop5 + mean`
+- Reference result: `ABRBench-3G (avg) = 84.8`
+
 ## Fixed Settings
 - Runner: `experiments/run_eoh_target_experiment.sh`
 - Evolution dataset: `ABRBench-3G`
@@ -36,11 +41,12 @@ Secondary reference:
 | Label | Key Change | Status | Run ID | Result |
 |-------|------------|--------|--------|--------|
 | V1 | New seed family `virtual_sensor`: fixed indicator scaffold + fixed conservative controller | failed | `20260421-3g-advanced-architectures-round1-v1-r1` | unhealthy launch; reached `e1` but hit repeated `BrokenPipeError` / upstream `429` before a valid first generation formed |
-| P1 | New seed family `rmpc_predictor`: fixed exact MPC rollout + new regime-aware predictor scaffold | failed | `20260421-3g-advanced-architectures-round1-p1-r1` | reached `5/10` populations, but repeated `BrokenPipeError` / upstream `429` kept the run dirty, so no trustworthy result was produced |
+| P1 | New seed family `rmpc_predictor`: fixed exact MPC rollout + new regime-aware predictor scaffold | failed | `20260421-3g-advanced-architectures-round1-p1-r1` | saved `8/10` populations, but repeated `BrokenPipeError` / upstream `429` kept the run dirty, so no trustworthy result was produced |
 | V2-local-deepseek-r1 | Rerun `virtual_sensor` locally through the current `.env` DeepSeek route from the experiment worktree | failed | `20260427-3g-advanced-architectures-v2-deepseek-local-r1` | invalid health run: old experiment-branch LLM client hung at `e1 [1/5]` after `population_generation_0`; stopped before `generation_1` |
 | V2-local-deepseek-r2 | Rerun `virtual_sensor` locally through DeepSeek after syncing the hard-timeout LLM client into the experiment worktree | stopped | `20260427-3g-advanced-architectures-v2-deepseek-local-r2` | stopped intentionally before completion when switching to heyun `EXP_N_PROC=2`; partial generations are not a final result |
 | V2-heyun-deepseek-n2-r3 | Rerun `virtual_sensor` on heyun through DeepSeek with the synced experiment branch and `EXP_N_PROC=2` | completed | `20260427-3g-advanced-architectures-v2-deepseek-heyun-n2-r3` | `ABRBench-3G avg = 85.8634`; completed 10/10 generations and full evaluation, no API/timeout failures, but produced 22 invalid offspring and stayed below `QUETRA pop5 = 86.9527` and `A1 = 88.8697` |
 | Control-main-deepseek-quetra-n2-r1 | Main checkout control without `virtual_sensor`: standard `quetra` seed through DeepSeek with `EXP_N_PROC=2` | running | `20260428-3g-main-deepseek-quetra-n2-r1` | launched to isolate provider/model effect from the `virtual_sensor` seed-family effect; `population_generation_0` exists, awaiting first completed generation |
+| P2-grok2api-rmpc_predictor-r1 | Retry `rmpc_predictor` on grok2api with hard-timeout client and `EXP_N_PROC=1` | running | `20260428-3g-advanced-rmpc-predictor-grok2api-r1` | launched to compare the Predictor-MPC seed family against the prior `robust_mpc` seed baseline (`3G:84.8`); grok2api probe authenticated but returned empty content, so health must be judged by population progress |
 
 ## Analysis Plan
 
@@ -62,5 +68,5 @@ Secondary reference:
 ## Next Steps
 
 1. Do not scale `virtual_sensor` further unless there is a specific diagnostic reason; the completed DeepSeek run is below the `QUETRA pop5` reference.
-2. If continuing this campaign, use the synced DeepSeek/heyun profile for `rmpc_predictor` next, because the original `P1` grok result was provider-contaminated but showed more evolutionary progress than `V1`.
+2. For `rmpc_predictor`, compare first against the prior `robust_mpc` seed result (`3G:84.8`) rather than the `QUETRA` seed; a strict same-provider control would require rerunning `robust_mpc` through the same grok2api profile.
 3. Keep treating the original `V1` / `P1` grok attempts as provider-contaminated, not clean negative evidence about the seed families.
