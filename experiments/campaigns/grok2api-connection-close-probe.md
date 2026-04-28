@@ -24,16 +24,17 @@
 | Label | Key Change | Status | Run ID | Result |
 |-------|------------|--------|--------|--------|
 | C1 | Probe branch `experiment/grok2api-close-connection-probe`; add default-off `LLM_API_CONNECTION_CLOSE` and run a one-generation cache-backed smoke with `Connection: close` | completed | `20260428-grok2api-close-rmpc-predictor-probe-r2` | completed one generation in 19.8 minutes; `BrokenPipeError=0`, `HTTP429=0`, `API error=0`, 3 invalid offspring, diagnostics `success=21 llm_timeout=0 eval_timeout=0 parse_error=0 worker_budget_timeout=0` |
+| C2 | Full cache-backed `rmpc_predictor` rerun with the same connection-close switch and full evaluation/analysis enabled | running | `20260428-3g-advanced-rmpc-predictor-grok2api-close-r1` | launched on heyun from `/root/code/exp-grok2api-close-connection-probe` with `EC_N_POP=10`, `EXP_N_PROC=1`, `LLM_API_CONNECTION_CLOSE=1`; passed startup and entered `OP: e1 [1/5]` with no early API/BrokenPipe/429 errors |
 
 ## Current Interpretation
 
-- The probe strongly supports a transport-layer cause for the grok2api `BrokenPipeError`: disabling connection reuse eliminated BrokenPipe in the same seed family and same gateway profile.
+- The initial probe strongly supports a transport-layer cause for the grok2api `BrokenPipeError`: disabling connection reuse eliminated BrokenPipe in the same seed family and same gateway profile.
 - This should not become a global default because Vertex and other providers can benefit from keep-alive and did not show the same failure shape.
 - The safe implementation path is an opt-in environment knob, `LLM_API_CONNECTION_CLOSE=1`, used only for grok2api-style proxy routes that break reused connections.
-- The probe does not prove `rmpc_predictor` quality; it only proves the next full `rmpc_predictor` test should be rerun with the connection-close knob before making an architecture judgment.
+- The full `C2` run is now the quality-bearing test. Do not draw the final `rmpc_predictor` architecture conclusion until `C2` finishes Phase 3/4 and writes `results_summary.csv`.
 
 ## Next Steps
 
 1. Merge the default-off `LLM_API_CONNECTION_CLOSE` switch if we want reproducible grok2api runs.
-2. Rerun the full cache-backed `rmpc_predictor` comparison with `LLM_API_CONNECTION_CLOSE=1`.
+2. Monitor `C2` for BrokenPipe/429 recurrence and full `results_summary.csv` completion.
 3. Keep the original keep-alive `rmpc_predictor` result marked as transport-contaminated.
