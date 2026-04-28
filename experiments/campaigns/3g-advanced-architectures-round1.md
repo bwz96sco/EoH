@@ -29,6 +29,7 @@ Secondary reference:
 - Generations: `EC_N_POP=10`
 - Fitness: plain `mean`
 - Remote execution profile: `grok2api workers=1`, `EXP_N_PROC=1`
+- DeepSeek rerun profile: `deepseek-v4-flash`, hard-timeout LLM client, `EXP_N_PROC=2`
 
 ## Run Matrix
 
@@ -37,7 +38,8 @@ Secondary reference:
 | V1 | New seed family `virtual_sensor`: fixed indicator scaffold + fixed conservative controller | failed | `20260421-3g-advanced-architectures-round1-v1-r1` | unhealthy launch; reached `e1` but hit repeated `BrokenPipeError` / upstream `429` before a valid first generation formed |
 | P1 | New seed family `rmpc_predictor`: fixed exact MPC rollout + new regime-aware predictor scaffold | failed | `20260421-3g-advanced-architectures-round1-p1-r1` | reached `5/10` populations, but repeated `BrokenPipeError` / upstream `429` kept the run dirty, so no trustworthy result was produced |
 | V2-local-deepseek-r1 | Rerun `virtual_sensor` locally through the current `.env` DeepSeek route from the experiment worktree | failed | `20260427-3g-advanced-architectures-v2-deepseek-local-r1` | invalid health run: old experiment-branch LLM client hung at `e1 [1/5]` after `population_generation_0`; stopped before `generation_1` |
-| V2-local-deepseek-r2 | Rerun `virtual_sensor` locally through DeepSeek after syncing the hard-timeout LLM client into the experiment worktree | running | `20260427-3g-advanced-architectures-v2-deepseek-local-r2` | healthy so far: `population_generation_1` and `pops_best/population_generation_1` formed cleanly, no `429` / HTTP / `Traceback` / `RemoteDisconnected` observed; run continues |
+| V2-local-deepseek-r2 | Rerun `virtual_sensor` locally through DeepSeek after syncing the hard-timeout LLM client into the experiment worktree | stopped | `20260427-3g-advanced-architectures-v2-deepseek-local-r2` | stopped intentionally before completion when switching to heyun `EXP_N_PROC=2`; partial generations are not a final result |
+| V2-heyun-deepseek-n2-r3 | Rerun `virtual_sensor` on heyun through DeepSeek with the synced experiment branch and `EXP_N_PROC=2` | completed | `20260427-3g-advanced-architectures-v2-deepseek-heyun-n2-r3` | `ABRBench-3G avg = 85.8634`; completed 10/10 generations and full evaluation, no API/timeout failures, but produced 22 invalid offspring and stayed below `QUETRA pop5 = 86.9527` and `A1 = 88.8697` |
 
 ## Analysis Plan
 
@@ -53,9 +55,10 @@ Secondary reference:
 - `V1` did not fail in a way that says much about the seed idea itself; it mainly reproduced the current grok transport instability (`BrokenPipe` + upstream `429`) under formal launch conditions.
 - `P1` made real evolutionary progress, unlike `V1`, but it still remained dirty throughout the run: repeated `BrokenPipeError` and upstream `429` were common deep into the population loop, so it also fails the health-gate standard for trustworthy evidence.
 - `V2-local-deepseek-r2` shows the local DeepSeek route is viable for at least the first full `virtual_sensor` generation once the hard-timeout LLM client is present in the experiment worktree. Early invalid offspring still appear (`Obj: None`), but the failure shape is parsing/quality noise rather than provider transport instability.
+- `V2-heyun-deepseek-n2-r3` is the first completed clean DeepSeek run for this campaign. It confirms the provider path and `EXP_N_PROC=2` are operational, but the `virtual_sensor` seed family did not beat the low-budget `QUETRA pop5` reference. Treat this as a negative quality signal for `virtual_sensor` under this budget, not as a provider failure.
 
 ## Next Steps
 
-1. Let `V2-local-deepseek-r2` finish before launching `P1`/`rmpc_predictor` on DeepSeek; running both concurrently would confound the provider-health signal.
-2. If `V2-local-deepseek-r2` completes cleanly, run the same local DeepSeek profile for `rmpc_predictor`.
+1. Do not scale `virtual_sensor` further unless there is a specific diagnostic reason; the completed DeepSeek run is below the `QUETRA pop5` reference.
+2. If continuing this campaign, use the synced DeepSeek/heyun profile for `rmpc_predictor` next, because the original `P1` grok result was provider-contaminated but showed more evolutionary progress than `V1`.
 3. Keep treating the original `V1` / `P1` grok attempts as provider-contaminated, not clean negative evidence about the seed families.
