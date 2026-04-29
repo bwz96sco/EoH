@@ -40,6 +40,7 @@
 | K3 | Run the full intended comparison config on `moonshotai/kimi-k2.5`: `QUETRA + pop5 + gen10 + EXP_N_PROC=1` | failed | `20260422-kimi25-full-r1` | stopped as unhealthy; no meaningful evolution progress appeared before a direct long-prompt probe confirmed the provider rejects EoH-scale prompts with `403` |
 | H1 | After fixing the relay group, run the hybgzs route with `claude-sonnet-4-6-thinking`, `QUETRA + pop5 + gen10`, and `EXP_N_PROC=1` | completed | `20260428-3g-model-refresh-hybgzs-sonnet46-n1-r1` | `ABRBench-3G = 87.5744`; clean full run with 0 API errors and 2 invalid offspring; this is the best fixed-`QUETRA pop5` model-refresh result so far |
 | H2 | Use the hybgzs `#gpt group` credential with `gpt-5.4`, keeping `QUETRA + pop5 + gen10` but raising concurrency to `EXP_N_PROC=4` | failed | `20260429-3g-model-refresh-hybgzs-gpt54-n4-r1` | min API probe returned `OK`, but real EoH `e1` immediately hit upstream saturation (`HTTP 429` x20); stopped before any generation completed, so this is a concurrency/provider-capacity failure rather than a model-quality result |
+| H3 | Switch the same hybgzs `#gpt group` credential to `gpt-5.4-mini`, keeping `QUETRA + pop5 + gen10` and `EXP_N_PROC=4` | failed | `20260429-3g-model-refresh-hybgzs-gpt54mini-n4-r1` | min API probe returned `OK`, but real EoH `e1` hit upstream saturation (`HTTP 429` x11), including one request exhausting all 5 retries; stopped before any generation completed, so this is also a provider-capacity result rather than a model-quality result |
 | V1 | Switch to Vertex AI via ADC and run the full `QUETRA + pop5 + gen10` recipe with `google/gemini-2.5-flash-lite` on `heyun` | completed | `20260422-gcp-vertex-flashlite-heyun-r1` | completed cleanly at `ABRBench-3G = 75.6869`; pipeline health was good, but result quality stayed far below old `QUETRA pop5 = 86.9527` and `A1 = 88.8697` |
 | V2 | Keep the same Vertex route and recipe, but replace only the model with `google/gemini-2.5-pro` to test whether quality improves over `flash-lite` | completed | `20260422-gcp-vertex-pro-heyun-r1` | `ABRBench-3G = 81.6910`; clean full run and clearly better than `flash-lite`, but still below old `QUETRA pop5 = 86.9527` and `A1 = 88.8697` |
 | V3 | Keep the same Vertex route and recipe, switch to `google/gemini-2.5-flash`, and increase parallelism to `EXP_N_PROC=2` to test whether higher throughput improves search efficiency without destabilizing the run | failed | `20260423-gcp-vertex-flash-n2-heyun-r1` | unhealthy Phase 1 run: every operator immediately hit `Parallel time out`, no meaningful evolution happened beyond carrying forward the cached seed best |
@@ -133,6 +134,10 @@ Interpretation:
    - that is `+0.6217` over historical `QUETRA pop5 = 86.9527`, and `-1.2953` below `A1 = 88.8697`
    - transport health was good: `API error = 0`, `BrokenPipeError = 0`, and only `2` invalid offspring
    - practical conclusion: among the provider/model refreshes tested so far, hybgzs + `claude-sonnet-4-6-thinking` is the best candidate backend for this fixed `QUETRA pop5 mean` recipe
+18. The hybgzs `#gpt group` credential is reachable, but not healthy at `EXP_N_PROC=4` for this EoH workload.
+   - both `gpt-5.4` (`H2`) and `gpt-5.4-mini` (`H3`) passed a minimal API probe before entering the real run
+   - both failed in real EoH `e1` with upstream saturation (`HTTP 429`) before any generation completed
+   - practical conclusion: these failures do not compare model quality; they show this relay group should be tested at lower concurrency, or avoided for full `QUETRA pop5` runs unless capacity changes
 
 Tracked artifacts:
 
@@ -144,6 +149,7 @@ Tracked artifacts:
 - copied Vertex pro summary: [V2_vertex_pro_results_summary.csv](/Users/zhangbowen/Projects/EoH/experiments/campaign_data/3g-model-refresh-round1/V2_vertex_pro_results_summary.csv)
 - Vertex flash run root: [experiments/results/20260423-gcp-vertex-flash-n1-heyun-r1](/Users/zhangbowen/Projects/EoH/experiments/results/20260423-gcp-vertex-flash-n1-heyun-r1)
 - copied Vertex flash summary: [V4_vertex_flash_results_summary.csv](/Users/zhangbowen/Projects/EoH/experiments/campaign_data/3g-model-refresh-round1/V4_vertex_flash_results_summary.csv)
+- hybgzs gpt-5.4-mini startup-failure run root: [experiments/results/20260429-3g-model-refresh-hybgzs-gpt54mini-n4-r1](/Users/zhangbowen/Projects/EoH/experiments/results/20260429-3g-model-refresh-hybgzs-gpt54mini-n4-r1)
 
 ## Next Steps
 
@@ -162,3 +168,4 @@ Tracked artifacts:
 10. Treat the current remote `.env` Kimi route as incompatible until its endpoint/model pair can pass the initial API check without upstream `404`.
 11. For the same endpoint, `moonshotai/kimi-k2.5` is chat-compatible but still not EoH-compatible under current prompt sizes, because long prompts are rejected with upstream `403`.
 12. Use hybgzs + `claude-sonnet-4-6-thinking` as the current best model-refresh backend when the goal is a stable `QUETRA pop5` 3G run; follow-up work should test whether this backend also improves larger-pop or structured-seed campaigns.
+13. Do not rerun the hybgzs `#gpt group` models at `EXP_N_PROC=4` unless the relay capacity changes; the next meaningful probe is `EXP_N_PROC=1` with the same cached `quetra-pop-5` setup.
