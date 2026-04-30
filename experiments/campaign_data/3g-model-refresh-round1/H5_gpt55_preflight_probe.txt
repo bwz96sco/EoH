@@ -1,0 +1,16 @@
+Run ID: 20260430-3g-model-refresh-hybgzs-gpt55-n1-preflight-r1
+Date: 2026-04-30
+Endpoint: https://ai.hybgzs.com
+Model: gpt-5.5
+Intended EoH config: ABRBench-3G, quetra seed, EC_POP_SIZE=5, EC_N_POP=10, EXP_N_PROC=1
+
+Outcome:
+- Full EoH was not launched because preflight did not produce a successful chat completion.
+- InterfaceAPI minimal prompt failed after 5 attempts:
+  - attempts 1-3: HTTP 500 decode_response_failed
+  - attempts 4-5: HTTP 429 rate_limit_exceeded
+- Direct same-header probes against /v1/chat/completions returned HTTP 500 decode_response_failed on 3/3 calls.
+
+Interpretation:
+- This is not a model-quality result.
+- The hybgzs gpt-5.5 route is not request-stable enough for the EoH workload at the time of this probe.

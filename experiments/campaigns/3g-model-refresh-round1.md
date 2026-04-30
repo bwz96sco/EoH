@@ -41,6 +41,8 @@
 | H1 | After fixing the relay group, run the hybgzs route with `claude-sonnet-4-6-thinking`, `QUETRA + pop5 + gen10`, and `EXP_N_PROC=1` | completed | `20260428-3g-model-refresh-hybgzs-sonnet46-n1-r1` | `ABRBench-3G = 87.5744`; clean full run with 0 API errors and 2 invalid offspring; this is the best fixed-`QUETRA pop5` model-refresh result so far |
 | H2 | Use the hybgzs `#gpt group` credential with `gpt-5.4`, keeping `QUETRA + pop5 + gen10` but raising concurrency to `EXP_N_PROC=4` | failed | `20260429-3g-model-refresh-hybgzs-gpt54-n4-r1` | min API probe returned `OK`, but real EoH `e1` immediately hit upstream saturation (`HTTP 429` x20); stopped before any generation completed, so this is a concurrency/provider-capacity failure rather than a model-quality result |
 | H3 | Switch the same hybgzs `#gpt group` credential to `gpt-5.4-mini`, keeping `QUETRA + pop5 + gen10` and `EXP_N_PROC=4` | failed | `20260429-3g-model-refresh-hybgzs-gpt54mini-n4-r1` | min API probe returned `OK`, but real EoH `e1` hit upstream saturation (`HTTP 429` x11), including one request exhausting all 5 retries; stopped before any generation completed, so this is also a provider-capacity result rather than a model-quality result |
+| H4 | Keep the same hybgzs `#gpt group` credential and `gpt-5.4-mini` route as `H3`, but lower concurrency to `EXP_N_PROC=1` for the recommended serial follow-up on the same cached `quetra-pop-5` setup | completed | `20260429-3g-model-refresh-hybgzs-gpt54mini-n1-r1` | `ABRBench-3G = 85.3480`; clean serial full run that clears the earlier startup-capacity failure mode, but still lands `-1.6047` below historical `QUETRA pop5 = 86.9527` and `-2.2264` below `H1` |
+| H5 | Switch the same hybgzs `#gpt group` route from `gpt-5.4-mini` to `gpt-5.5`, keeping the intended serial `QUETRA + pop5 + gen10` setup with `EXP_N_PROC=1` | failed | `20260430-3g-model-refresh-hybgzs-gpt55-n1-preflight-r1` | preflight failed before EoH launch: `InterfaceAPI` minimal prompt returned `HTTP 500 decode_response_failed` on attempts 1-3 and `HTTP 429` on attempts 4-5; direct same-header probes then returned `HTTP 500 decode_response_failed` x3, so the route is not currently stable enough for a full run |
 | V1 | Switch to Vertex AI via ADC and run the full `QUETRA + pop5 + gen10` recipe with `google/gemini-2.5-flash-lite` on `heyun` | completed | `20260422-gcp-vertex-flashlite-heyun-r1` | completed cleanly at `ABRBench-3G = 75.6869`; pipeline health was good, but result quality stayed far below old `QUETRA pop5 = 86.9527` and `A1 = 88.8697` |
 | V2 | Keep the same Vertex route and recipe, but replace only the model with `google/gemini-2.5-pro` to test whether quality improves over `flash-lite` | completed | `20260422-gcp-vertex-pro-heyun-r1` | `ABRBench-3G = 81.6910`; clean full run and clearly better than `flash-lite`, but still below old `QUETRA pop5 = 86.9527` and `A1 = 88.8697` |
 | V3 | Keep the same Vertex route and recipe, switch to `google/gemini-2.5-flash`, and increase parallelism to `EXP_N_PROC=2` to test whether higher throughput improves search efficiency without destabilizing the run | failed | `20260423-gcp-vertex-flash-n2-heyun-r1` | unhealthy Phase 1 run: every operator immediately hit `Parallel time out`, no meaningful evolution happened beyond carrying forward the cached seed best |
@@ -135,9 +137,19 @@ Interpretation:
    - transport health was good: `API error = 0`, `BrokenPipeError = 0`, and only `2` invalid offspring
    - practical conclusion: among the provider/model refreshes tested so far, hybgzs + `claude-sonnet-4-6-thinking` is the best candidate backend for this fixed `QUETRA pop5 mean` recipe
 18. The hybgzs `#gpt group` credential is reachable, but not healthy at `EXP_N_PROC=4` for this EoH workload.
-   - both `gpt-5.4` (`H2`) and `gpt-5.4-mini` (`H3`) passed a minimal API probe before entering the real run
-   - both failed in real EoH `e1` with upstream saturation (`HTTP 429`) before any generation completed
-   - practical conclusion: these failures do not compare model quality; they show this relay group should be tested at lower concurrency, or avoided for full `QUETRA pop5` runs unless capacity changes
+    - both `gpt-5.4` (`H2`) and `gpt-5.4-mini` (`H3`) passed a minimal API probe before entering the real run
+    - both failed in real EoH `e1` with upstream saturation (`HTTP 429`) before any generation completed
+    - practical conclusion: these failures do not compare model quality; they show this relay group should be tested at lower concurrency, or avoided for full `QUETRA pop5` runs unless capacity changes
+19. The recommended serial follow-up confirms that the earlier `H3` failure was at least partly a concurrency / provider-capacity problem, not just a model-quality collapse.
+    - `H4` kept the same hybgzs `#gpt group` + `gpt-5.4-mini` route as `H3`, but dropped to `EXP_N_PROC=1`
+    - unlike `H3`, it completed a clean full serial run and produced `ABRBench-3G = 85.3480`
+    - that is `-1.6047` below historical `QUETRA pop5 = 86.9527`, so this route is viable infrastructure but not a new best 3G backend under the fixed recipe
+    - it is also `-2.2264` below `H1`, which keeps hybgzs + `claude-sonnet-4-6-thinking` as the stronger model-refresh result in this series
+20. `gpt-5.5` on the same hybgzs route is not currently request-stable, even at serial concurrency.
+    - `H5` changed only the model name to `gpt-5.5` and kept the intended full-run settings at `EXP_N_PROC=1`
+    - the minimal EoH client probe failed before launch with repeated `HTTP 500 decode_response_failed`, then upstream `HTTP 429`
+    - a direct same-header three-call probe returned `HTTP 500 decode_response_failed` for all calls
+    - practical conclusion: do not launch full EoH on this `gpt-5.5` route until a minimal chat-completion probe returns consistently successful JSON responses
 
 Tracked artifacts:
 
@@ -150,6 +162,9 @@ Tracked artifacts:
 - Vertex flash run root: [experiments/results/20260423-gcp-vertex-flash-n1-heyun-r1](/Users/zhangbowen/Projects/EoH/experiments/results/20260423-gcp-vertex-flash-n1-heyun-r1)
 - copied Vertex flash summary: [V4_vertex_flash_results_summary.csv](/Users/zhangbowen/Projects/EoH/experiments/campaign_data/3g-model-refresh-round1/V4_vertex_flash_results_summary.csv)
 - hybgzs gpt-5.4-mini startup-failure run root: [experiments/results/20260429-3g-model-refresh-hybgzs-gpt54mini-n4-r1](/Users/zhangbowen/Projects/EoH/experiments/results/20260429-3g-model-refresh-hybgzs-gpt54mini-n4-r1)
+- hybgzs gpt-5.4-mini serial run root: [experiments/results/20260429-3g-model-refresh-hybgzs-gpt54mini-n1-r1](/Users/zhangbowen/Projects/EoH/experiments/results/20260429-3g-model-refresh-hybgzs-gpt54mini-n1-r1)
+- copied H4 summary: [H4_gpt54mini_serial_results_summary.csv](/Users/zhangbowen/Projects/EoH/experiments/campaign_data/3g-model-refresh-round1/H4_gpt54mini_serial_results_summary.csv)
+- H5 preflight notes: [H5_gpt55_preflight_probe.txt](/Users/zhangbowen/Projects/EoH/experiments/campaign_data/3g-model-refresh-round1/H5_gpt55_preflight_probe.txt)
 
 ## Next Steps
 
@@ -168,4 +183,5 @@ Tracked artifacts:
 10. Treat the current remote `.env` Kimi route as incompatible until its endpoint/model pair can pass the initial API check without upstream `404`.
 11. For the same endpoint, `moonshotai/kimi-k2.5` is chat-compatible but still not EoH-compatible under current prompt sizes, because long prompts are rejected with upstream `403`.
 12. Use hybgzs + `claude-sonnet-4-6-thinking` as the current best model-refresh backend when the goal is a stable `QUETRA pop5` 3G run; follow-up work should test whether this backend also improves larger-pop or structured-seed campaigns.
-13. Do not rerun the hybgzs `#gpt group` models at `EXP_N_PROC=4` unless the relay capacity changes; the next meaningful probe is `EXP_N_PROC=1` with the same cached `quetra-pop-5` setup.
+13. Do not rerun the hybgzs `#gpt group` models at `EXP_N_PROC=4` unless the relay capacity changes; `H4` shows the same route is workable at `EXP_N_PROC=1`, so any further follow-ups should stay serial unless the provider capacity story changes.
+14. Treat hybgzs `gpt-5.5` as unavailable for EoH until a preflight probe clears repeated `decode_response_failed` responses.
