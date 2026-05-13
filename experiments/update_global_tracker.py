@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Manage the global experiment tracker at experiments/experiments_tracker.md.
+"""Manage the global experiment tracker.
 
 Supports registering new runs, marking them complete/failed, and bulk-scanning
 the results directory.  The tracker file is a Markdown table that is safe to
 edit by hand (Campaign / Notes columns are preserved across updates).
+
+Run this script from the code checkout (`code/EoH`). In the research workspace
+layout, it writes Markdown to `note/EoABR-vault/experiments/` by default while
+continuing to read run artifacts from `code/EoH/experiments/`.
 
 Examples
 --------
@@ -26,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -51,7 +56,35 @@ from abr_run_record import (
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-TRACKER_PATH = REPO_ROOT / "experiments" / "experiments_tracker.md"
+
+
+def _workspace_root() -> Path | None:
+    """Return the research workspace root when this repo lives under code/."""
+    if REPO_ROOT.parent.name == "code":
+        return REPO_ROOT.parent.parent
+    return None
+
+
+def _default_tracker_path() -> Path:
+    """Prefer the Obsidian note vault, with code-local fallback."""
+    env_path = os.environ.get("EOABR_EXPERIMENT_TRACKER")
+    if env_path:
+        return Path(env_path).expanduser()
+
+    vault_env = os.environ.get("EOABR_NOTE_VAULT")
+    if vault_env:
+        return Path(vault_env).expanduser() / "experiments" / "experiments_tracker.md"
+
+    workspace = _workspace_root()
+    if workspace is not None:
+        vault = workspace / "note" / "EoABR-vault"
+        if vault.is_dir():
+            return vault / "experiments" / "experiments_tracker.md"
+
+    return REPO_ROOT / "experiments" / "experiments_tracker.md"
+
+
+DEFAULT_TRACKER_PATH = _default_tracker_path()
 
 # ---------------------------------------------------------------------------
 # Tracker table schema
@@ -161,11 +194,11 @@ def render_tracker(rows: list[dict[str, str]]) -> str:
     return HEADER + "\n".join(table_lines) + "\n"
 
 
-def write_tracker(rows: list[dict[str, str]]) -> None:
+def write_tracker(rows: list[dict[str, str]], path: Path) -> None:
     """Write tracker to disk, creating parent directories if needed."""
-    TRACKER_PATH.parent.mkdir(parents=True, exist_ok=True)
-    TRACKER_PATH.write_text(render_tracker(rows), encoding="utf-8")
-    print(f"Tracker updated: {TRACKER_PATH}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_tracker(rows), encoding="utf-8")
+    print(f"Tracker updated: {path}")
 
 
 # ---------------------------------------------------------------------------
@@ -421,7 +454,7 @@ def op_scan(rows: list[dict[str, str]], campaign: str) -> list[dict[str, str]]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="update_global_tracker",
-        description="Manage the global experiment tracker (experiments/experiments_tracker.md).",
+        description="Manage the global experiment tracker Markdown file.",
         epilog=(
             "Examples:\n"
             "  # Register a new run\n"
@@ -505,6 +538,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         help="Manual completion date YYYY-MM-DD (for remote experiments).",
     )
+    parser.add_argument(
+        "--tracker",
+        default=str(DEFAULT_TRACKER_PATH),
+        help="Tracker Markdown path. Defaults to note/EoABR-vault/experiments/experiments_tracker.md when available; run the script from code/EoH.",
+    )
 
     return parser
 
@@ -512,9 +550,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+    tracker_path = Path(args.tracker).expanduser()
 
     # Load existing tracker
-    rows = parse_tracker(TRACKER_PATH)
+    rows = parse_tracker(tracker_path)
 
     if args.register:
         rows = op_register(
@@ -533,7 +572,7 @@ def main() -> None:
     elif args.scan:
         rows = op_scan(rows, args.campaign)
 
-    write_tracker(rows)
+    write_tracker(rows, tracker_path)
 
 
 if __name__ == "__main__":

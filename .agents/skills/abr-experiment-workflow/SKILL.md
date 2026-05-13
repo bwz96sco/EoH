@@ -1,22 +1,25 @@
 ---
 name: abr-experiment-workflow
-description: "Use when running, rerunning, comparing, or validating ABR experiments in this repo. Chooses between the full mixed runner and the single-target EoH runner, enforces canonical outputs under experiments/results/<run-id>/..., preserves seed-cache rules, standardizes explicit run-matrix concurrency, and warns about backup.env and the nested env/SABR repo."
+description: "Use when running, rerunning, comparing, validating, or scheduling ABR experiments in this repo. Chooses between the full mixed runner and the single-target EoH runner, enforces canonical outputs under experiments/results/<run-id>/..., uses the note-vault queue/tracker for paper campaigns, preserves seed-cache rules, standardizes explicit run-matrix concurrency, and warns about backup.env and the nested env/SABR repo."
 ---
 
 # ABR Experiment Workflow
 
 Use this skill for any ABR experiment task in EoH. The goal is to keep every experiment on the same command path, output layout, and result-tracking flow.
 
+Project-local note paths in this skill are relative to workspace root `/Users/zhangbowen/Projects/EoABR`. Run experiment commands from `/Users/zhangbowen/Projects/EoABR/code/EoH` unless a task explicitly uses a worktree or remote checkout.
+
 ## Core Rules
 
 - Prefer wrapper scripts under `experiments/`. Do not start with ad hoc direct calls to `examples/user_abr/runEoH.py` unless the user explicitly wants low-level debugging.
 - Treat `experiments/results/<run-id>/` as the canonical output root for experiment artifacts.
 - Treat `examples/user_abr/seed_cache/` as cache-only state, not canonical results.
-- Before starting a new experiment series, register it under `experiments/campaigns/` and record what the campaign is trying to prove, what factors will change, and what runs are planned.
+- Run Python project scripts with `uv run python ...` from the `code/EoH` checkout.
+- Before starting a new experiment series, register it under `note/EoABR-vault/experiments/campaigns/` and record what the campaign is trying to prove, what factors will change, and what runs are planned.
 - For every changed experiment attempt inside a campaign, record a short `Key Change` note so the tracker shows exactly what changed relative to the series baseline or sibling runs.
 - Before launching long runs, check `experiments/private/backup.env` and tell the user if remote backup is active.
 - Remember that `env/SABR` is a nested git repo. If a task changes SABR files, report that those changes live outside the top-level git index.
-- Keep campaign and tracker records in sync with the primary local repo checkout. Worktrees, branches, and remote checkouts may isolate code changes and runtime artifacts, but `experiments/campaigns/` and `experiments/experiments_tracker.md` should be updated in the main checkout as the shared source of truth.
+- Keep campaign, tracker, and paper queue records in sync with the primary note vault. Worktrees, branches, and remote checkouts may isolate code changes and runtime artifacts, but `note/EoABR-vault/experiments/campaigns/`, `note/EoABR-vault/experiments/experiments_tracker.md`, and `note/EoABR-vault/experiments/plans/paper_experiment_queue.yaml` are the shared source of truth for paper-campaign state.
 
 ## Worktree / Branch Discipline
 
@@ -40,7 +43,8 @@ For remote servers: push the branch, clone or pull it on the server, and run fro
 
 Use stable, predictable checkout roots instead of ad hoc directories.
 
-- Primary local checkout: repo root itself (for this project, the shared source of truth is the main `EoH` checkout).
+- Primary local code checkout: `code/EoH`.
+- Primary bookkeeping repo: `note/EoABR-vault`.
 - Local experiment worktrees: sibling directories named `EoH-exp-<campaign-or-variant>`.
 - Primary remote checkout: a stable shared clone such as `/root/code/EoH-repro`.
 - Remote experiment checkouts: `/root/code/exp-<campaign-or-variant>`.
@@ -55,19 +59,19 @@ Rules:
 Important distinction:
 
 - **Isolate code changes** in worktrees / branches / remote experiment checkouts.
-- **Do not isolate bookkeeping**. Campaign registration and tracker updates belong in the primary local repo so later sessions do not lose the experiment narrative.
+- **Do not isolate bookkeeping**. Campaign registration, tracker updates, and paper queue status belong in the primary note vault so later sessions do not lose the experiment narrative.
 - Every changed run in a campaign should carry a `Key Change` summary in the series tracker. If you regenerate the tracker, preserve or re-supply those summaries rather than letting them disappear.
 
 ## Experiment Lifecycle
 
 Every experiment follows this lifecycle:
 
-1. **Plan**: Register campaign in `experiments/campaigns/`, define run matrix
+1. **Plan**: Register campaign in `note/EoABR-vault/experiments/campaigns/`, define run matrix or queue task
 2. **Pre-flight**: Validate environment (see Pre-flight Check)
 3. **Launch**: Start runner script(s) -- auto-registers in global tracker
 4. **Monitor**: Tail logs, check generation progress
 5. **Collect**: Runner auto-generates analysis (CSV, plots, report)
-6. **Record**: Runner auto-updates global tracker; manually update series tracker in the main local checkout
+6. **Record**: Runner auto-updates global tracker; manually update series tracker and queue status in the note vault
 7. **Cleanup**: Remove temporary worktrees if used
 
 ## Post-Launch Health Gate
@@ -118,7 +122,7 @@ Before launching any experiment:
 
 For future ABR experiments, the default flow should be:
 
-1. Campaign registration: add or update a tracker in `experiments/campaigns/` that states the objective, the experimental factor being changed, the expected comparison metric, and the planned run matrix.
+1. Campaign registration: add or update a tracker in `note/EoABR-vault/experiments/campaigns/` that states the objective, the experimental factor being changed, the expected comparison metric, and the planned run matrix.
 2. Phase 1: run EoH evolution. If there are multiple EoH-only jobs, this is the phase that can be parallelized.
 3. Phase 2: reuse existing SABR baseline logs whenever the required baseline set already exists. Only rerun phase 2 when the baselines are genuinely missing, invalid, or intentionally changed.
 4. Phase 3: evaluate the EoH result on the requested datasets.
@@ -129,6 +133,29 @@ This means the normal default is not "always run the full legacy pipeline". The 
 - record the campaign first
 - run only the missing phases
 - avoid rerunning shared baseline state when nothing baseline-related changed
+
+## Paper OpenRouter Campaign Rules
+
+For paper-facing EoABR experiments, first read:
+
+- `note/EoABR-vault/experiments/plans/paper_experiment_plan.md`
+- `note/EoABR-vault/experiments/plans/paper_experiment_checklist.md`
+- `note/EoABR-vault/experiments/plans/paper_experiment_queue.yaml`
+
+Use the queue as task state. Pick one `ready` task or a small same-protocol batch, mark it `running` before launch, then mark it `completed`, `failed`, `blocked`, or `reusable` after verification.
+
+Paper-valid EoABR evolution runs must:
+
+- use OpenRouter through the formal OpenAI-compatible endpoint
+- use fixed OpenRouter model IDs, not aliases such as `latest`
+- record a frozen manifest beside run artifacts
+- record model snapshot, provider route policy, route/usage metadata, timeout policy, retry/error counts, invalid offspring, token usage, and estimated cost
+- disable silent fallback routing for strict model/provider comparisons
+- complete the planned generations and evaluation without manual cherry-picking
+
+Do not report mixed-provider pilot results as final paper evidence. Keep Table 1 model rows separate, such as `EoABR (Grok 4.3)` and `EoABR (DeepSeek V4 Pro)`, instead of averaging different LLM backbones into one EoABR score.
+
+Before scheduling a new paper run, check the plan's cross-table reuse map and the queue's `reuse_targets` / `reuse_source` fields. Do not rerun an arm if an existing formal OpenRouter run has the same dataset, model ID, provider route policy, seed selection, population size, generations, evaluator, parser, timeout policy, and manifest version.
 
 ## Choose The Runner
 
@@ -228,11 +255,11 @@ For the default dataset-impact matrix, use only datasets with `TRAIN_TRACES` and
 
 Only include those explicitly when you intentionally want OOD training fallback to test traces.
 
-## Three-Layer Tracking
+## Tracking Layers
 
 ### Layer 1: Global Experiment Tracker
 
-`experiments/experiments_tracker.md` -- git tracked, the single source of truth for all experiments.
+`note/EoABR-vault/experiments/experiments_tracker.md` -- git tracked in the note vault, the single source of truth for all experiments.
 
 Every experiment is registered here when it starts and updated when it completes. This file lets all agents (Claude, Codex, etc.) see the full experiment history.
 
@@ -242,26 +269,26 @@ Managed by `experiments/update_global_tracker.py`:
 
 ```bash
 # Register at start (runners do this automatically)
-python3 experiments/update_global_tracker.py \
+uv run python experiments/update_global_tracker.py \
     --register <run-id> --campaign <campaign> --target <dataset> --status running
 
 # Mark complete (runners do this automatically)
-python3 experiments/update_global_tracker.py --complete <run-id>
+uv run python experiments/update_global_tracker.py --complete <run-id>
 
 # Scan results/ for unregistered runs
-python3 experiments/update_global_tracker.py --scan --campaign <campaign>
+uv run python experiments/update_global_tracker.py --scan --campaign <campaign>
 ```
 
 ### Layer 2: Campaign Series Tracker
 
-`experiments/campaigns/<series>.md` -- git tracked, one file per research series.
+`note/EoABR-vault/experiments/campaigns/<series>.md` -- git tracked in the note vault, one file per research series.
 
-Before starting a new series, register it in `experiments/campaigns/README.md`.
+Before starting a new series, register it in `note/EoABR-vault/experiments/campaigns/README.md`.
 
 After experiments complete, generate or update the series tracker:
 
 ```bash
-python3 experiments/update_series_tracker.py \
+uv run python experiments/update_series_tracker.py \
     --name "series-name" \
     --objective "What this series aims to achieve" \
     --baseline "87.0 (Quetra seed, seed-impact study)" \
@@ -274,7 +301,13 @@ The script also copies `results_summary.csv` to `experiments/campaign_data/<seri
 
 Manually fill in the **Analysis** and **Next Steps** sections. These are preserved on re-runs.
 
-### Layer 3: Per-Run Analysis
+### Layer 3: Paper Experiment Queue
+
+`note/EoABR-vault/experiments/plans/paper_experiment_queue.yaml` -- git tracked in the note vault, one machine-readable task queue for paper-facing OpenRouter experiments.
+
+The queue is campaign state, not executable code. It records planned tasks, dependencies, status, protocol fields, manifest paths, artifact paths, reuse sources, and verification notes. Agents should update the queue after each task instead of relying on chat history.
+
+### Layer 4: Per-Run Analysis
 
 `experiments/results/<run-id>/analysis/` -- NOT git tracked.
 
@@ -282,9 +315,9 @@ Contains `results_summary.csv`, `run_report.md`, and `plots/`. Generated automat
 
 ### Campaign-First Rule
 
-Before starting a new experiment series, create or update a campaign entry in `experiments/campaigns/README.md`.
+Before starting a new experiment series, create or update a campaign entry in `note/EoABR-vault/experiments/campaigns/README.md`.
 
-Even when the experiment will run from a worktree or a remote clone, do this registration in the main local checkout first.
+Even when the experiment will run from a worktree or a remote clone, do this registration in the primary local note vault first.
 
 A campaign record should answer:
 
@@ -299,7 +332,7 @@ A campaign record should answer:
 - For multiple concurrent jobs, set `ABR_SKIP_TRACKER_UPDATE=1` on each and run once after all complete:
 
 ```bash
-python3 experiments/update_global_tracker.py --scan
+uv run python experiments/update_global_tracker.py --scan
 ```
 
 - After a series completes, run `update_series_tracker.py` to generate the campaign tracker.
@@ -307,7 +340,7 @@ python3 experiments/update_global_tracker.py --scan
 ## Recommended Procedure
 
 1. Classify the request as standard mixed or EoH-only study.
-2. Register or update the campaign under `experiments/campaigns/` before launching runs.
+2. Register or update the campaign under `note/EoABR-vault/experiments/campaigns/` before launching runs.
 3. Run pre-flight check.
 4. Decide which phases are actually missing. Reuse phase 2 by default if the needed SABR baseline logs already exist and baseline code/config did not change. `run_experiment.sh` now auto-detects this when `SKIP_PHASE_2` is not explicitly set.
 5. Use `run_experiment.sh` only when you intentionally want the mixed workflow in one run id. Otherwise use `run_eoh_target_experiment.sh`.
@@ -326,22 +359,23 @@ python3 experiments/update_global_tracker.py --scan
 
 When experiments run on remote servers (GPU clusters, VAST.ai, etc.) or in checkouts that are not the primary local repo:
 
-1. **Push first**: Ensure the remote checkout has the latest `experiments/update_global_tracker.py` and `experiments/experiments_tracker.md`. Push to the shared branch before starting remote runs.
-2. **Auto-tracking**: If the runner script calls `--register` and `--complete` automatically, the tracker is updated on the remote. Pull the tracker file after the run completes.
-3. **Manual registration**: If the remote checkout does NOT have the tracker infrastructure, or the experiment was run ad hoc, register manually after the run:
+1. **Push first**: Ensure the remote checkout has the latest runner scripts and experiment code. Push the code branch before starting remote runs.
+2. **Queue export**: If the remote server cannot access `note/EoABR-vault`, export only the relevant queue rows or commands. After the run, sync status, manifest path, artifact path, and failure notes back to the note-vault queue.
+3. **Auto-tracking**: If the runner script calls `--register` and `--complete` automatically, confirm whether the remote wrote to the note vault or to a local fallback tracker. The note-vault tracker remains the source of truth.
+4. **Manual registration**: If the remote checkout does NOT have the tracker infrastructure, or the experiment was run ad hoc, register manually after the run from the primary local `code/EoH` checkout:
 
 ```bash
-python3 experiments/update_global_tracker.py \
+uv run python experiments/update_global_tracker.py \
     --register <run-id> \
     --campaign <campaign> --target <dataset> --status completed \
     --result "3G:XX.X" --notes "description" \
     --started YYYY-MM-DD --completed YYYY-MM-DD
 ```
 
-4. **Autonomous agents**: Codex or other agents running experiments remotely MUST push tracker updates to the shared branch so other agents can see what ran. Set `ABR_CAMPAIGN` so the run is associated with the correct campaign.
-5. **Result retrieval**: After remote runs complete, either copy `results_summary.csv` to the local `experiments/results/<run-id>/analysis/` or use the `--result` flag to manually record the key metric.
+5. **Autonomous agents**: Codex or other agents running experiments remotely MUST update the note-vault queue/tracker after retrieval so other agents can see what ran. Set `ABR_CAMPAIGN` so the run is associated with the correct campaign.
+6. **Result retrieval**: After remote runs complete, either copy `results_summary.csv` to the local `experiments/results/<run-id>/analysis/` or use the `--result` flag to manually record the key metric.
 
-6. **No repo-root launch logs**: Remote checkouts follow the same rule as local ones. Keep launcher output under `experiments/results/<run-id>/logs/` and delete transient repo-root `.launch-*` files instead of letting them accumulate.
+7. **No repo-root launch logs**: Remote checkouts follow the same rule as local ones. Keep launcher output under `experiments/results/<run-id>/logs/` and delete transient repo-root `.launch-*` files instead of letting them accumulate.
 
 ## Multi-Stage Experiments
 

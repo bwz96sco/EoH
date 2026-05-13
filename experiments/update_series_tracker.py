@@ -2,7 +2,10 @@
 """Generate or update a campaign tracker for a group of related experiments.
 
 Reads results_summary.csv from each run directory, extracts key metrics,
-and generates a markdown tracker under experiments/campaigns/<name>.md.
+and generates a markdown tracker under the research note vault when available.
+Run this script from the code checkout (`code/EoH`); generated campaign notes
+go to `note/EoABR-vault/experiments/campaigns/` by default, while copied CSV
+summaries remain in `code/EoH/experiments/campaign_data/`.
 
 Preserves manually-written Analysis and Next Steps sections on update.
 
@@ -29,6 +32,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import re
 import shutil
 import sys
@@ -37,8 +41,37 @@ from pathlib import Path
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-CAMPAIGNS_DIR = SCRIPT_DIR / "campaigns"
+REPO_ROOT = SCRIPT_DIR.parent
 CAMPAIGN_DATA_DIR = SCRIPT_DIR / "campaign_data"
+
+
+def _workspace_root() -> Path | None:
+    """Return the research workspace root when this repo lives under code/."""
+    if REPO_ROOT.parent.name == "code":
+        return REPO_ROOT.parent.parent
+    return None
+
+
+def _default_campaigns_dir() -> Path:
+    """Prefer the Obsidian note vault, with code-local fallback."""
+    env_path = os.environ.get("EOABR_CAMPAIGNS_DIR")
+    if env_path:
+        return Path(env_path).expanduser()
+
+    vault_env = os.environ.get("EOABR_NOTE_VAULT")
+    if vault_env:
+        return Path(vault_env).expanduser() / "experiments" / "campaigns"
+
+    workspace = _workspace_root()
+    if workspace is not None:
+        vault = workspace / "note" / "EoABR-vault"
+        if vault.is_dir():
+            return vault / "experiments" / "campaigns"
+
+    return SCRIPT_DIR / "campaigns"
+
+
+CAMPAIGNS_DIR = _default_campaigns_dir()
 
 SCHEME_LABELS = {
     "sim_bb": "BB",
@@ -449,7 +482,7 @@ Examples:
     parser.add_argument(
         "--name",
         required=True,
-        help="Campaign name (used as filename: campaigns/<name>.md)",
+        help="Campaign name. When run from code/EoH, the default output is note/EoABR-vault/experiments/campaigns/<name>.md.",
     )
     parser.add_argument(
         "--objective",
@@ -483,7 +516,7 @@ Examples:
     parser.add_argument(
         "--output",
         default="",
-        help="Override output path (default: experiments/campaigns/<name>.md)",
+        help="Override output path. Default is note/EoABR-vault/experiments/campaigns/<name>.md when available.",
     )
 
     args = parser.parse_args()
