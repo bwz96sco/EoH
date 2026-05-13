@@ -13,3 +13,14 @@ project_doc_fallback_filenames = ["AGENTS.md"]
 #
 # Without this flag, hooks.json is ignored and Trellis context won't
 # be injected into Codex sessions.
+
+[mcp_servers.gitnexus]
+command = "/Users/zhangbowen/.codex/vendor/gitnexus-runtime/node_modules/.bin/gitnexus"
+args = ["mcp"]
+startup_timeout_sec = 30.0
+tool_timeout_sec = 180.0
+
+[mcp_servers.abcoder]
+command = "/Users/zhangbowen/go/bin/abcoder"
+args = ["mcp", "/Users/zhangbowen/.asts"]
+startup_timeout_sec = 30.0

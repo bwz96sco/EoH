@@ -1,11 +1,17 @@
 {
   "mcpServers": {
-    "mempal": {
-      "type": "stdio",
-      "command": "mempal",
+    "abcoder": {
+      "command": "abcoder",
       "args": [
-        "serve",
-        "--mcp"
+        "mcp",
+        "/Users/zhangbowen/.asts"
+      ]
+    },
+    "gitnexus": {
+      "type": "stdio",
+      "command": "/Users/zhangbowen/.codex/vendor/gitnexus-runtime/node_modules/.bin/gitnexus",
+      "args": [
+        "mcp"
       ],
       "env": {}
     }

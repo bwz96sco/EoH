@@ -21,7 +21,7 @@ uv run python experiments/grok2api_probe.py --mode quality \
     --n-calls 30 \
     --endpoint http://127.0.0.1:8000 \
     --model grok-4.20-fast \
-    --request-timeout 180 --total-timeout 360 \
+    --request-timeout 300 --total-timeout 600 \
     --prompt-file experiments/grok2api_probe_sample_prompt.txt \
     --report-out /tmp/probe-quality-$(date +%s).json
 ```

@@ -43,3 +43,4 @@
 | 3G Island Round 1 | 用 5 个 seed 各自独立演化后再汇合，测试岛屿模式能否避免 mixed-seed 早期干扰 | completed | 87.5；未超过 A1=88.9 | [tracker](3g-island-round1.md) |
 | 3G Validation Round 1 | held-out validation split 是否能降低 3G 过拟合并超过 88.9 baseline | completed | V1=87.3, V2=87.2；均未超过 A1=88.9 | [tracker](3g-validation-round1.md) |
 | 4G Feedback Ablation | 在 ABRBench-4G+ 上做 feedback on/off 对照，判断 evaluator feedback 是否仍有正收益 | completed | on=1005.4, off=988.2, delta=+17.2 | [tracker](4g-feedback-ablation.md) |
+| 4G+ to 3G Transfer | 在 4G+ 上进化 heuristic 后零样本评估到 3G，补齐 reverse transfer 表 | completed | Vertex Pro pop5 reverse transfer: 3G avg 85.5 | [tracker](4gplus-to-3g-transfer.md) |

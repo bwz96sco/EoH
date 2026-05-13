@@ -753,6 +753,7 @@ ABR_BACKUP_REMOTE=onedrive_raw:EoH-backup ABR_BACKUP_SEED_CACHE=1 bash experimen
   - `experiments/private/experiment_index.md`
   - optionally `examples/user_abr/seed_cache/`
 - Default backup mode should be copy-style, not destructive sync, so remote history is not deleted by accident.
+- Run-root backup must use a stable local snapshot as the `rclone` source. The runner writes backup status and rclone output through `tee`, so direct `rclone copy "$RUN_ROOT" ...` can fail when `logs/full_pipeline.log` or `logs/launcher.log` changes during upload.
 - Seed-cache backup should be opt-in via `ABR_BACKUP_SEED_CACHE=1`, because it can be reused across runs and may be large.
 - Backup failures should warn without overwriting the original experiment exit code by default.
 
@@ -763,21 +764,25 @@ ABR_BACKUP_REMOTE=onedrive_raw:EoH-backup ABR_BACKUP_SEED_CACHE=1 bash experimen
 | `ABR_BACKUP_REMOTE` unset | Workflow skips backup entirely |
 | `ABR_BACKUP_REMOTE` unset but `experiments/private/backup.env` defines `ABR_BACKUP_REMOTE_DEFAULT` | Workflow uses the local default remote root |
 | `ABR_BACKUP_REMOTE` set and `rclone` missing | Workflow warns and continues without backup |
-| Run root exists | Workflow copies `experiments/results/<run-id>/` to the remote mirror path |
+| Run root exists | Workflow snapshots `experiments/results/<run-id>/` under a temp directory, then copies that stable snapshot to the remote mirror path |
+| `logs/full_pipeline.log` or `logs/launcher.log` is still open during finalization | Backup still succeeds because rclone reads the snapshot, not the live log files |
 | Private tracker exists | Workflow copies `experiments/private/experiment_index.md` to the remote mirror path |
 | `ABR_BACKUP_SEED_CACHE=1` | Workflow also copies `examples/user_abr/seed_cache/` |
 
 ### 5. Good/Base/Bad Cases
 - Good: `ABR_BACKUP_REMOTE=onedrive_raw:EoH-backup` copies the current canonical run and private tracker to OneDrive after tracker refresh.
 - Good: `experiments/private/backup.env` sets `ABR_BACKUP_REMOTE_DEFAULT=onedrive_raw:ExperimentsRecord/EoH`, so the workflow uses the intended remote root without per-run shell flags.
+- Good: finalization runs `rsync -a` or `cp -a` into `/tmp/abr-backup.*` and points rclone at that snapshot.
 - Base: a manual `rclone copy` of `experiments/results/` and `experiments/private/` when backfilling older runs.
 - Bad: hardcoding a personal backup remote into tracked source.
 - Bad: using destructive sync as the default backup operation for experiment artifacts.
+- Bad: copying the live run root directly while the same process is still appending backup logs.
 
 ### 6. Tests Required
 - `python3 -m py_compile experiments/update_experiment_tracker.py experiments/run_layout.py`
-- `bash -n experiments/run_experiment.sh`
+- `bash -n experiments/run_experiment.sh experiments/run_eoh_target_experiment.sh`
 - Manual check: run the workflow with `ABR_BACKUP_REMOTE` set and verify the current run directory and private tracker appear on the remote.
+- Manual probe: copy a temp run-root snapshot while the source log file is still being appended, then verify rclone uploaded the snapshot without "source file is being updated" errors.
 
 ### 7. Wrong vs Correct
 
@@ -786,6 +791,9 @@ ABR_BACKUP_REMOTE=onedrive_raw:EoH-backup ABR_BACKUP_SEED_CACHE=1 bash experimen
 ```bash
 # Hardcoded personal remote and destructive default
 rclone sync experiments/results my-personal-remote:
+
+# Live run root as source while full_pipeline.log is still growing
+rclone copy "$RUN_ROOT" "$ABR_BACKUP_REMOTE/experiments/results/$ABR_RUN_ID" --progress
 ```
 
 #### Correct
@@ -796,6 +804,10 @@ ABR_BACKUP_REMOTE=onedrive_raw:EoH-backup bash experiments/run_experiment.sh
 # Finalization refreshes the private tracker, then copies:
 #   experiments/results/<run-id>/
 #   experiments/private/experiment_index.md
+
+tmp_parent="$(mktemp -d "${TMPDIR:-/tmp}/abr-backup.XXXXXX")"
+rsync -a --delete "$RUN_ROOT/" "$tmp_parent/$ABR_RUN_ID/"
+rclone copy "$tmp_parent/$ABR_RUN_ID" "$ABR_BACKUP_REMOTE/experiments/results/$ABR_RUN_ID"
 ```
 
 ## Scenario: Remote LLM Transport Contract

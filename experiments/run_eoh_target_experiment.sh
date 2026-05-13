@@ -100,12 +100,53 @@ backup_path_if_present() {
 
     if [[ -d "$local_path" ]]; then
         log_info "Backing up directory ${local_path} -> ${remote_path}"
-        rclone copy "$local_path" "$remote_path" --progress --create-empty-src-dirs
+        rclone copy "$local_path" "$remote_path" --create-empty-src-dirs
         return
     fi
 
     log_info "Backing up file ${local_path} -> ${remote_path}"
-    rclone copyto "$local_path" "$remote_path" --progress
+    rclone copyto "$local_path" "$remote_path"
+}
+
+backup_directory_snapshot_if_present() {
+    local local_path="$1"
+    local remote_path="$2"
+
+    if [[ ! -e "$local_path" ]]; then
+        log_info "Backup skip: ${local_path} does not exist"
+        return 0
+    fi
+
+    if [[ ! -d "$local_path" ]]; then
+        backup_path_if_present "$local_path" "$remote_path"
+        return
+    fi
+
+    local tmp_parent
+    local snapshot_path
+    local snapshot_status=0
+    local rclone_status=0
+
+    tmp_parent="$(mktemp -d "${TMPDIR:-/tmp}/abr-backup.XXXXXX")"
+    snapshot_path="${tmp_parent}/$(basename "${local_path%/}")"
+
+    log_info "Preparing stable backup snapshot ${local_path} -> ${snapshot_path}"
+    if command -v rsync >/dev/null 2>&1; then
+        rsync -a --delete "${local_path%/}/" "${snapshot_path}/" || snapshot_status=$?
+    else
+        mkdir -p "$snapshot_path"
+        cp -a "${local_path%/}/." "$snapshot_path/" || snapshot_status=$?
+    fi
+
+    if [[ "$snapshot_status" -ne 0 ]]; then
+        rm -rf "$tmp_parent"
+        return "$snapshot_status"
+    fi
+
+    log_info "Backing up directory snapshot ${snapshot_path} -> ${remote_path}"
+    rclone copy "$snapshot_path" "$remote_path" --create-empty-src-dirs || rclone_status=$?
+    rm -rf "$tmp_parent"
+    return "$rclone_status"
 }
 
 should_backup_run_artifacts() {
@@ -146,7 +187,7 @@ backup_run_artifacts() {
         return 0
     fi
 
-    backup_path_if_present "$RUN_ROOT" "${ABR_BACKUP_REMOTE%/}/experiments/results/${ABR_RUN_ID}" || \
+    backup_directory_snapshot_if_present "$RUN_ROOT" "${ABR_BACKUP_REMOTE%/}/experiments/results/${ABR_RUN_ID}" || \
         log_info "WARNING: failed to back up canonical run root"
 
     if [[ "$ABR_BACKUP_SEED_CACHE" == "1" ]]; then

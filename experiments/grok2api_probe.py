@@ -316,12 +316,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--request-timeout",
         type=int,
-        default=int(os.environ.get("LLM_REQUEST_TIMEOUT_S", "180")),
+        default=int(os.environ.get("LLM_REQUEST_TIMEOUT_S", "300")),
     )
     p.add_argument(
         "--total-timeout",
         type=int,
-        default=int(os.environ.get("LLM_TOTAL_TIMEOUT_S", "360")),
+        default=int(os.environ.get("LLM_TOTAL_TIMEOUT_S", "600")),
     )
     p.add_argument(
         "--prompt-file",
